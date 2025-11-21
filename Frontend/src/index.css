@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- ADD THIS SECTION --- */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Optional: Selection Color to match your theme */
+::selection {
+  background-color: #f7650b; /* Your Brand Orange */
+  color: white;
+}
