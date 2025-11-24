@@ -1,4 +1,4 @@
-import React from "react";
+ import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 
@@ -6,9 +6,10 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Home from "./pages/Home";
-import Courses from "./pages/Courses";
+import Services from "./pages/services";
 import ContactUs from "./pages/ContactUs";
 import Scroll from "./components/ScrollTop"
+import Pricing from "./pages/Pricing";   // <-- NEW IMPORT
 
 
 // Dashboard Components
@@ -41,12 +42,25 @@ const App = () => {
         />
 
         <Route
-          path="/courses"
+          path="/services"
           element={
             <>
               <Navbar />
               <div className="flex-grow">
-                <Courses />
+                <Services />
+              </div>
+              <Footer />
+            </>
+          }
+        />
+
+        <Route
+          path="/pricing"
+          element={
+            <>
+              <Navbar />
+              <div className="flex-grow">
+                <Pricing />
               </div>
               <Footer />
             </>
