@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom"; // <--- ADDED for redirection
+import { useNavigate } from "react-router-dom";
 import {
   X,
   Mail,
@@ -12,12 +12,10 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  CheckCircle2,
   CreditCard,
   Ticket,
   Globe,
   Loader2,
-  Smartphone,
   Building2,
 } from "lucide-react";
 
@@ -26,10 +24,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
   signInWithEmailAndPassword,
-  signInWithPhoneNumber,
-  RecaptchaVerifier,
-  EmailAuthProvider,
-  linkWithCredential,
+  createUserWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
@@ -99,15 +94,15 @@ const INDIAN_STATES = [
 ];
 
 const PLANS = [
-  { id: "starter", name: "Pro Starter - ₹999" },
-  { id: "elite", name: "Premium Elite - ₹2,499" },
-  { id: "supreme", name: "Supreme Master - ₹4,999" },
+  { id: "starter", name: "Pro Starter", price: 999 },
+  { id: "elite", name: "Premium Elite", price: 2499 },
+  { id: "supreme", name: "Supreme Master", price: 4999 },
 ];
 
 const AuthModal = ({ isOpen, onClose }) => {
-  const navigate = useNavigate(); // <--- Hook for navigation
+  const navigate = useNavigate();
 
-  // Views: 'login', 'login-otp', 'signup-step-1', 'signup-step-2', 'otp-verify'
+  // Views: 'login', 'signup-step-1', 'signup-step-2'
   const [view, setView] = useState("login");
   const [direction, setDirection] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -116,7 +111,6 @@ const AuthModal = ({ isOpen, onClose }) => {
   // --- Form States ---
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [loginPhone, setLoginPhone] = useState("");
 
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -129,10 +123,6 @@ const AuthModal = ({ isOpen, onClose }) => {
   const [promoCode, setPromoCode] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
 
-  // OTP State
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [confirmationResult, setConfirmationResult] = useState(null);
-
   const [showPassword, setShowPassword] = useState(false);
   const [strength, setStrength] = useState(0);
 
@@ -143,7 +133,6 @@ const AuthModal = ({ isOpen, onClose }) => {
         setView("login");
         setLoginIdentifier("");
         setLoginPassword("");
-        setLoginPhone("");
         setEmail("");
         setFullName("");
         setPhone("");
@@ -154,10 +143,8 @@ const AuthModal = ({ isOpen, onClose }) => {
         setPromoCode("");
         setSignupPassword("");
         setStrength(0);
-        setOtp(["", "", "", "", "", ""]);
         setError("");
         setLoading(false);
-        setConfirmationResult(null);
       }, 300);
     }
   }, [isOpen]);
@@ -176,33 +163,6 @@ const AuthModal = ({ isOpen, onClose }) => {
     setStrength(score);
   }, [signupPassword]);
 
-  // --- Recaptcha Setup ---
-  const setupRecaptcha = () => {
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {
-        console.warn(e);
-      }
-      window.recaptchaVerifier = null;
-    }
-
-    window.recaptchaVerifier = new RecaptchaVerifier(
-      auth,
-      "recaptcha-container",
-      {
-        size: "invisible",
-        callback: () => {
-          console.log("Recaptcha verified");
-        },
-        "expired-callback": () => {
-          setError("Recaptcha expired. Please try again.");
-          setLoading(false);
-        },
-      }
-    );
-  };
-
   // --- Helpers ---
   const getAppId = () =>
     typeof __app_id !== "undefined" ? __app_id : "default-app";
@@ -211,7 +171,6 @@ const AuthModal = ({ isOpen, onClose }) => {
     setDirection(1);
     setView(newView);
     setError("");
-    setOtp(["", "", "", "", "", ""]);
   };
 
   // --- 1. Login (Phone/Email + Password) ---
@@ -226,11 +185,11 @@ const AuthModal = ({ isOpen, onClose }) => {
 
       if (isPhone) {
         const appId = getAppId();
+        // Path correction: removed 'public' to fix document reference error
         const lookupRef = doc(
           db,
           "artifacts",
           appId,
-          "public",
           "user_lookup",
           loginIdentifier
         );
@@ -245,7 +204,6 @@ const AuthModal = ({ isOpen, onClose }) => {
 
       await signInWithEmailAndPassword(auth, emailToLogin, loginPassword);
 
-      // SUCCESS: Navigate to Dashboard
       onClose();
       navigate("/dashboard");
     } catch (err) {
@@ -260,36 +218,7 @@ const AuthModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // --- 2. Login via OTP (Request) ---
-  const handleLoginOtpRequest = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      setupRecaptcha();
-      const appVerifier = window.recaptchaVerifier;
-      const formattedPhone = `+91${loginPhone}`;
-      const confirmation = await signInWithPhoneNumber(
-        auth,
-        formattedPhone,
-        appVerifier
-      );
-      setConfirmationResult(confirmation);
-      setLoading(false);
-      navigateTo("otp-verify");
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-      if (err.message.includes("auth/invalid-api-key")) {
-        setError("Invalid API Key configuration.");
-      } else {
-        setError("Failed to send OTP. Check console.");
-      }
-    }
-  };
-
-  // --- 3. Signup Steps ---
+  // --- 2. Signup Step 1 ---
   const handleSignupStep1 = (e) => {
     e.preventDefault();
     if (!email || !fullName || !phone || !selectedState || !city || !pincode) {
@@ -299,7 +228,8 @@ const AuthModal = ({ isOpen, onClose }) => {
     navigateTo("signup-step-2");
   };
 
-  const handleSignupFinal = async (e) => {
+  // --- 3. Signup Step 2: Create User & Initialize Payment ---
+  const handleSignupAndPay = async (e) => {
     e.preventDefault();
     if (!selectedPlan || !signupPassword) {
       setError("Please select a plan and password");
@@ -309,113 +239,99 @@ const AuthModal = ({ isOpen, onClose }) => {
     setError("");
 
     try {
-      setupRecaptcha();
-      const appVerifier = window.recaptchaVerifier;
-      const formattedPhone = `+91${phone}`;
-
-      const confirmation = await signInWithPhoneNumber(
+      // 1. Create Firebase User
+      const userCredential = await createUserWithEmailAndPassword(
         auth,
-        formattedPhone,
-        appVerifier
+        email,
+        signupPassword
       );
-      setConfirmationResult(confirmation);
-      setLoading(false);
-      navigateTo("otp-verify");
-    } catch (err) {
-      console.error("Signup Error:", err);
-      setLoading(false);
-      setError(err.message || "Failed to send OTP.");
-    }
-  };
+      const user = userCredential.user;
 
-  // --- 4. OTP Verification (6 Digits) ---
-  const handleOtpVerify = async () => {
-    setLoading(true);
-    setError("");
-    const otpCode = otp.join("");
+      await updateProfile(user, { displayName: fullName });
 
-    if (otpCode.length !== 6) {
-      setError("Enter 6-digit OTP");
-      setLoading(false);
-      return;
-    }
+      const appId = getAppId();
+      const planDetails = PLANS.find((p) => p.id === selectedPlan);
 
-    if (!confirmationResult) {
-      setError("Session expired. Please go back and try again.");
-      setLoading(false);
-      return;
-    }
+      // 2. Save Initial Data to Firestore
+      await setDoc(
+        doc(
+          db,
+          "artifacts",
+          appId,
+          "users",
+          user.uid,
+          "profile",
+          "account_info"
+        ),
+        {
+          fullName,
+          email,
+          phone,
+          state: selectedState,
+          city,
+          pincode,
+          plan: selectedPlan,
+          planPrice: planDetails.price,
+          promoCode,
+          joinedAt: new Date().toISOString(),
+          role: "student",
+          paymentStatus: "pending",
+          paymentId: null,
+        }
+      );
 
-    try {
-      // A. Verify OTP
-      const result = await confirmationResult.confirm(otpCode);
-      const user = result.user;
+      // 3. Create Phone Lookup (Corrected Path)
+      await setDoc(doc(db, "artifacts", appId, "user_lookup", phone), {
+        email: email,
+      });
 
-      // If signing up, link credentials and save profile
-      if (signupPassword) {
-        const credential = EmailAuthProvider.credential(email, signupPassword);
-        await linkWithCredential(user, credential);
-        await updateProfile(user, { displayName: fullName });
+      // 4. Call Backend for Payment Link
+      // ✅ FIXED: Using 127.0.0.1 and Port 5001 for Mac Compatibility
+      // ... Upar ka code same rahega ...
 
-        const appId = getAppId();
+      // 4. Call Backend for Payment Link
+      const amount = planDetails.price;
 
-        // Save User Profile
-        await setDoc(
-          doc(
-            db,
-            "artifacts",
-            appId,
-            "users",
-            user.uid,
-            "profile",
-            "account_info"
-          ),
-          {
-            fullName,
-            email,
-            phone,
-            state: selectedState,
-            city,
-            pincode,
-            plan: selectedPlan,
-            promoCode,
-            joinedAt: new Date().toISOString(),
-            role: "student",
-          }
-        );
+      // Note: URL 127.0.0.1:5001 hi rakhna Mac ke liye
+      const response = await fetch(
+        "http://127.0.0.1:5001/api/payment/initiate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: user.uid,
+            amount: amount,
+            phone: phone,
+            planId: selectedPlan,
+          }),
+        }
+      );
 
-        // Create Phone Lookup
-        await setDoc(
-          doc(db, "artifacts", appId, "public", "user_lookup", phone),
-          { email: email }
-        );
-      }
+      const data = await response.json();
 
-      // SUCCESS: Navigate to Dashboard
-      setLoading(false);
-      onClose();
-      navigate("/dashboard");
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-      if (err.code === "auth/credential-already-in-use") {
-        setError("This email or phone is already registered.");
-      } else if (err.code === "auth/invalid-verification-code") {
-        setError("Incorrect OTP.");
+      console.log("Backend Response:", data); // <-- Console mein check karna
+
+      if (data.success && data.url) {
+        // Success: Redirect
+        window.location.href = data.url;
       } else {
-        setError("Verification failed. Please try again.");
+        // Failure: Show specific error
+        alert("Payment Error: " + (data.error || "Unknown Error"));
+        console.error("Payment Details:", data);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("Signup/Payment Error:", err);
+      setLoading(false);
+      if (err.code === "auth/email-already-in-use") {
+        setError("Email is already registered. Try logging in.");
+      } else {
+        setError(err.message || "Signup failed.");
       }
     }
   };
 
-  const handleOtpChange = (element, index) => {
-    if (isNaN(element.value)) return false;
-    const newOtp = [...otp];
-    newOtp[index] = element.value;
-    setOtp(newOtp);
-    if (element.value && element.nextSibling) element.nextSibling.focus();
-  };
-
+  // --- UI Helpers ---
   const getStrengthColor = () => {
     if (strength === 0) return "bg-slate-200";
     if (strength <= 2) return "bg-red-500";
@@ -450,9 +366,6 @@ const AuthModal = ({ isOpen, onClose }) => {
             className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[60]"
           />
 
-          {/* Recaptcha Container */}
-          <div id="recaptcha-container"></div>
-
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -479,15 +392,11 @@ const AuthModal = ({ isOpen, onClose }) => {
 
                 <div className="relative z-10 text-center px-4 mt-2">
                   <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-1">
-                    {view.includes("login") && "Welcome Back"}
-                    {view.includes("signup") && "Create Account"}
-                    {view === "otp-verify" && "Verification"}
+                    {view.includes("login") ? "Welcome Back" : "Create Account"}
                   </h2>
                   <p className="text-slate-400 text-xs sm:text-sm font-medium">
-                    {view === "login" && "Login with Phone or Email"}
-                    {view === "login-otp" && "Login without password"}
+                    {view === "login" && "Login to your dashboard"}
                     {view.includes("signup") && "Join our community today"}
-                    {view === "otp-verify" && "Enter 6-digit OTP"}
                   </p>
                 </div>
               </div>
@@ -560,14 +469,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                           </div>
                         </div>
 
-                        <div className="flex justify-between items-center pt-2">
-                          <button
-                            type="button"
-                            onClick={() => navigateTo("login-otp")}
-                            className="text-xs font-bold text-slate-500 hover:text-slate-800"
-                          >
-                            Login via OTP instead
-                          </button>
+                        <div className="flex justify-end items-center pt-2">
                           <a
                             href="#"
                             className="text-xs font-bold text-[#f7650b] hover:underline"
@@ -602,63 +504,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                     </motion.div>
                   )}
 
-                  {/* --- VIEW: LOGIN OTP (Alternative) --- */}
-                  {view === "login-otp" && (
-                    <motion.div
-                      key="login-otp"
-                      variants={slideVariants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      className="w-full"
-                    >
-                      <form
-                        onSubmit={handleLoginOtpRequest}
-                        className="space-y-4"
-                      >
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-500 uppercase ml-1">
-                            Phone Number
-                          </label>
-                          <div className="relative">
-                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                            <input
-                              type="tel"
-                              value={loginPhone}
-                              onChange={(e) =>
-                                setLoginPhone(
-                                  e.target.value.replace(/\D/g, "").slice(0, 10)
-                                )
-                              }
-                              className="w-full pl-12 pr-4 py-4 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#f7650b] transition-all font-medium text-slate-800 text-sm"
-                              placeholder="Enter 10 digit number"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          disabled={loading}
-                          className="w-full py-4 rounded-xl bg-slate-900 text-white font-bold text-base shadow-lg hover:bg-[#f7650b] transition-all flex items-center justify-center gap-2 disabled:opacity-70"
-                        >
-                          {loading ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : (
-                            "Get OTP"
-                          )}{" "}
-                          <Smartphone className="w-5 h-5" />
-                        </button>
-                      </form>
-                      <div className="mt-6 text-center">
-                        <button
-                          onClick={() => navigateTo("login")}
-                          className="text-sm text-slate-500 hover:text-slate-900 font-bold"
-                        >
-                          Back to Password Login
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* --- VIEW: SIGNUP STEP 1 --- */}
+                  {/* --- VIEW: SIGNUP STEP 1 (User Details) --- */}
                   {view === "signup-step-1" && (
                     <motion.div
                       key="signup-step-1"
@@ -772,7 +618,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                     </motion.div>
                   )}
 
-                  {/* --- VIEW: SIGNUP STEP 2 --- */}
+                  {/* --- VIEW: SIGNUP STEP 2 (Plan & Payment) --- */}
                   {view === "signup-step-2" && (
                     <motion.div
                       key="signup-step-2"
@@ -782,7 +628,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                       exit="exit"
                       className="w-full"
                     >
-                      <form onSubmit={handleSignupFinal} className="space-y-4">
+                      <form onSubmit={handleSignupAndPay} className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 uppercase ml-1">
                             Select Your Plan
@@ -800,7 +646,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                               </option>
                               {PLANS.map((p) => (
                                 <option key={p.id} value={p.id}>
-                                  {p.name}
+                                  {p.name} - ₹{p.price}
                                 </option>
                               ))}
                             </select>
@@ -824,10 +670,10 @@ const AuthModal = ({ isOpen, onClose }) => {
                           </div>
                         </div>
 
-                        {/* Password Field with Strength Bar */}
+                        {/* Password Field */}
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 uppercase ml-1">
-                            Secure Account
+                            Create Password
                           </label>
                           <div className="relative">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -854,7 +700,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                             </button>
                           </div>
 
-                          {/* UPDATED: Animated Strength Bar */}
+                          {/* Strength Bar */}
                           {signupPassword && (
                             <div className="mt-2">
                               <div className="flex justify-between text-[10px] font-bold uppercase text-slate-400 mb-1">
@@ -902,66 +748,13 @@ const AuthModal = ({ isOpen, onClose }) => {
                               <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                               <>
-                                Send OTP <ArrowRight className="w-5 h-5" />
+                                Pay & Register{" "}
+                                <ArrowRight className="w-5 h-5" />
                               </>
                             )}
                           </button>
                         </div>
                       </form>
-                    </motion.div>
-                  )}
-
-                  {/* --- VIEW: OTP VERIFY (6 DIGIT) --- */}
-                  {view === "otp-verify" && (
-                    <motion.div
-                      key="otp-verify"
-                      variants={slideVariants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      className="w-full flex flex-col items-center text-center"
-                    >
-                      <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 mb-6 shadow-inner border border-green-100">
-                        <CheckCircle2 className="w-8 h-8" />
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-900 mb-1">
-                        Verification Code
-                      </h3>
-                      <p className="text-sm text-slate-500 mb-8">
-                        Enter 6-digit code sent to +91 {phone || loginPhone}
-                      </p>
-
-                      {/* 6 Digit Input Grid */}
-                      <div className="flex gap-2 mb-8">
-                        {otp.map((digit, index) => (
-                          <input
-                            key={index}
-                            type="text"
-                            maxLength="1"
-                            value={digit}
-                            onChange={(e) => handleOtpChange(e.target, index)}
-                            className="w-10 h-12 sm:w-12 sm:h-14 rounded-xl border-2 border-slate-200 text-center text-lg sm:text-xl font-bold text-slate-900 focus:border-[#f7650b] focus:outline-none transition-all bg-white shadow-sm"
-                          />
-                        ))}
-                      </div>
-
-                      <button
-                        onClick={handleOtpVerify}
-                        disabled={loading}
-                        className="w-full py-4 rounded-xl bg-slate-900 text-white font-bold text-base shadow-xl hover:bg-[#f7650b] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70"
-                      >
-                        {loading ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          "Verify & Proceed"
-                        )}
-                      </button>
-                      <button
-                        onClick={() => navigateTo("login")}
-                        className="mt-6 text-xs text-slate-400 font-bold hover:text-slate-800"
-                      >
-                        Cancel Verification
-                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>

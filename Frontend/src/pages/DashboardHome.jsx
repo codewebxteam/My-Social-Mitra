@@ -19,6 +19,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getAuth } from "firebase/auth";
+import CreateOrderModal from "../components/CreateOrderModal"; // <--- Import Modal
 
 // --- MOCK STATS DATA ---
 const stats = [
@@ -65,50 +66,6 @@ const stats = [
     bg: "bg-red-50",
     trend: "0%",
     positive: true,
-  },
-];
-
-// --- MOCK RECENT ORDERS ---
-const recentOrders = [
-  {
-    id: "#ORD-7821",
-    client: "Rahul Kumar",
-    service: "Video Editing",
-    date: "22 Nov, 10:30 AM",
-    status: "Delivered",
-    amount: "₹4,500",
-    avatar:
-      "https://ui-avatars.com/api/?name=Rahul+Kumar&background=0D8ABC&color=fff",
-  },
-  {
-    id: "#ORD-7820",
-    client: "Design Co.",
-    service: "Thumbnail Pack",
-    date: "21 Nov, 04:15 PM",
-    status: "Pending",
-    amount: "₹1,200",
-    avatar:
-      "https://ui-avatars.com/api/?name=Design+Co&background=f7650b&color=fff",
-  },
-  {
-    id: "#ORD-7819",
-    client: "Sneha S.",
-    service: "Reels Bundle",
-    date: "21 Nov, 02:00 PM",
-    status: "Processing",
-    amount: "₹8,000",
-    avatar:
-      "https://ui-avatars.com/api/?name=Sneha+S&background=6b21a8&color=fff",
-  },
-  {
-    id: "#ORD-7818",
-    client: "Tech Flow",
-    service: "Web Audit",
-    date: "20 Nov, 11:00 AM",
-    status: "Delivered",
-    amount: "₹15,000",
-    avatar:
-      "https://ui-avatars.com/api/?name=Tech+Flow&background=10b981&color=fff",
   },
 ];
 
@@ -186,13 +143,10 @@ const SimpleBarChart = ({ view }) => {
           key={`${view}-${i}`}
           className="group flex flex-col items-center gap-3 w-full h-full justify-end relative"
         >
-          {/* Floating Tooltip */}
           <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl z-20 whitespace-nowrap">
             {h} Orders
             <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
           </div>
-
-          {/* The Bar */}
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: `${h}%`, opacity: 1 }}
@@ -211,11 +165,8 @@ const SimpleBarChart = ({ view }) => {
                   : "from-slate-300 to-slate-200 group-hover:from-orange-300 group-hover:to-orange-200"
               } transition-colors duration-300`}
             ></div>
-            {/* Shine Effect */}
             <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/50"></div>
           </motion.div>
-
-          {/* Label */}
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[#f7650b] transition-colors">
             {currentData.labels[i]}
           </span>
@@ -229,8 +180,44 @@ const DashboardHome = () => {
   const auth = getAuth();
   const user = auth.currentUser;
   const agencyName = user?.displayName || "Partner";
+
   const [performanceView, setPerformanceView] = useState("Weekly");
   const [greeting, setGreeting] = useState("Good Morning");
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false); // <--- Modal State
+
+  // --- INITIAL ORDERS DATA ---
+  const [orders, setOrders] = useState([
+    {
+      id: "#ORD-7821",
+      client: "Rahul Kumar",
+      service: "Video Editing",
+      date: "22 Nov, 10:30 AM",
+      status: "Delivered",
+      amount: "₹4,500",
+      avatar:
+        "https://ui-avatars.com/api/?name=Rahul+Kumar&background=0D8ABC&color=fff",
+    },
+    {
+      id: "#ORD-7820",
+      client: "Design Co.",
+      service: "Thumbnail Pack",
+      date: "21 Nov, 04:15 PM",
+      status: "Pending",
+      amount: "₹1,200",
+      avatar:
+        "https://ui-avatars.com/api/?name=Design+Co&background=f7650b&color=fff",
+    },
+    {
+      id: "#ORD-7819",
+      client: "Sneha S.",
+      service: "Reels Bundle",
+      date: "21 Nov, 02:00 PM",
+      status: "Processing",
+      amount: "₹8,000",
+      avatar:
+        "https://ui-avatars.com/api/?name=Sneha+S&background=6b21a8&color=fff",
+    },
+  ]);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -239,14 +226,25 @@ const DashboardHome = () => {
     else setGreeting("Good Evening");
   }, []);
 
+  // --- HANDLE NEW ORDER SUBMISSION ---
+  const handleCreateOrder = (newOrderData) => {
+    const newOrder = {
+      id: `#ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+      client: newOrderData.client,
+      service: newOrderData.service,
+      date: "Just now",
+      status: "Pending",
+      amount: `₹${newOrderData.amount}`,
+      avatar: `https://ui-avatars.com/api/?name=${newOrderData.client}&background=random&color=fff`,
+    };
+    setOrders([newOrder, ...orders]); // Add to top of list
+  };
+
   return (
     <main className="min-h-screen bg-[#f8fafc] font-sans relative overflow-x-hidden pb-24">
-      {/* --- AMBIENT BACKGROUND LAYERS --- */}
+      {/* --- BACKGROUND --- */}
       <div className="fixed inset-0 w-full h-full pointer-events-none">
-        {/* Soft Gradient Mesh */}
         <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-white via-slate-50 to-transparent" />
-
-        {/* Animated Blobs */}
         <motion.div
           animate={{ x: [0, 50, 0], y: [0, 30, 0], rotate: [0, 5, 0] }}
           transition={{ duration: 20, repeat: Infinity }}
@@ -259,7 +257,6 @@ const DashboardHome = () => {
         />
       </div>
 
-      {/* REDUCED TOP PADDING HERE (pt-6 instead of pt-24) */}
       <div className="relative z-10 max-w-[1400px] mx-auto px-4 md:px-8 pt-6">
         {/* --- 1. HERO & WELCOME --- */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-12">
@@ -307,7 +304,10 @@ const DashboardHome = () => {
               <Download className="w-4 h-4" /> Report
             </button>
             <div className="w-px h-8 bg-slate-200 mx-1"></div>
-            <button className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-[#f7650b] transition-all shadow-lg hover:shadow-orange-500/25 flex items-center gap-2">
+            <button
+              onClick={() => setIsOrderModalOpen(true)} // <--- Open Modal
+              className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-[#f7650b] transition-all shadow-lg hover:shadow-orange-500/25 flex items-center gap-2"
+            >
               <Zap className="w-4 h-4 fill-current" /> Create Order
             </button>
           </motion.div>
@@ -324,11 +324,9 @@ const DashboardHome = () => {
               whileHover={{ y: -5 }}
               className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden group cursor-default"
             >
-              {/* Background Glow on Hover */}
               <div
                 className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 rounded-full blur-2xl transition-opacity duration-500`}
               ></div>
-
               <div className="flex justify-between items-start mb-8">
                 <div
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br ${stat.color} text-white shadow-lg`}
@@ -350,7 +348,6 @@ const DashboardHome = () => {
                   )}
                 </div>
               </div>
-
               <div>
                 <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">
                   {stat.title}
@@ -368,7 +365,6 @@ const DashboardHome = () => {
 
         {/* --- 3. MAIN CONTENT GRID --- */}
         <div className="grid lg:grid-cols-12 gap-8 mb-12">
-          {/* ANALYTICS CHART (Col-span-8) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -398,11 +394,9 @@ const DashboardHome = () => {
                 ))}
               </div>
             </div>
-
             <SimpleBarChart view={performanceView} />
           </motion.div>
 
-          {/* ORDER STATUS (Col-span-4) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -415,11 +409,9 @@ const DashboardHome = () => {
                 <MoreHorizontal className="w-5 h-5" />
               </button>
             </div>
-
             <div className="flex-grow flex items-center justify-center">
               <SimplePieChart />
             </div>
-
             <div className="mt-6 pt-6 border-t border-slate-50">
               <p className="text-center text-sm text-slate-500">
                 Your delivery rate is{" "}
@@ -432,7 +424,6 @@ const DashboardHome = () => {
 
         {/* --- 4. BOTTOM GRID --- */}
         <div className="grid lg:grid-cols-12 gap-8">
-          {/* RECENT ORDERS TABLE */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -473,37 +464,40 @@ const DashboardHome = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {recentOrders.map((order) => (
-                    <tr
-                      key={order.id}
-                      className="group hover:bg-slate-50/80 transition-colors"
-                    >
-                      <td className="px-8 py-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={order.avatar}
-                            alt={order.client}
-                            className="w-10 h-10 rounded-xl shadow-sm"
-                          />
-                          <div>
-                            <div className="font-bold text-slate-900 text-sm">
-                              {order.client}
-                            </div>
-                            <div className="text-xs text-slate-400 font-medium">
-                              {order.id}
+                  {orders.map(
+                    (
+                      order // <--- Using STATE 'orders' here
+                    ) => (
+                      <tr
+                        key={order.id}
+                        className="group hover:bg-slate-50/80 transition-colors"
+                      >
+                        <td className="px-8 py-4">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={order.avatar}
+                              alt={order.client}
+                              className="w-10 h-10 rounded-xl shadow-sm"
+                            />
+                            <div>
+                              <div className="font-bold text-slate-900 text-sm">
+                                {order.client}
+                              </div>
+                              <div className="text-xs text-slate-400 font-medium">
+                                {order.id}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                          <Package className="w-4 h-4 text-slate-400" />{" "}
-                          {order.service}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                            <Package className="w-4 h-4 text-slate-400" />{" "}
+                            {order.service}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
                                    ${
                                      order.status === "Delivered"
                                        ? "bg-green-50 text-green-600 border-green-100"
@@ -512,29 +506,30 @@ const DashboardHome = () => {
                                        : "bg-blue-50 text-blue-600 border-blue-100"
                                    }
                                 `}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-bold text-slate-900">
-                          {order.amount}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="p-2 rounded-lg text-slate-300 hover:bg-white hover:text-[#f7650b] hover:shadow-md transition-all">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-slate-900">
+                            {order.amount}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button className="p-2 rounded-lg text-slate-300 hover:bg-white hover:text-[#f7650b] hover:shadow-md transition-all">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>
           </motion.div>
 
-          {/* PREMIUM PLAN CARD ("BLACK CARD") */}
+          {/* PREMIUM PLAN CARD */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -542,11 +537,9 @@ const DashboardHome = () => {
             className="lg:col-span-4 group perspective-1000"
           >
             <div className="relative h-full bg-slate-900 rounded-[2.5rem] p-8 overflow-hidden text-white flex flex-col shadow-2xl shadow-slate-900/40 transition-transform duration-500 hover:scale-[1.02]">
-              {/* Holographic / Mesh Background */}
               <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] mix-blend-overlay"></div>
               <div className="absolute -top-24 -right-24 w-80 h-80 bg-gradient-to-br from-[#f7650b] to-purple-600 rounded-full blur-[80px] opacity-40 group-hover:opacity-60 transition-opacity duration-700"></div>
 
-              {/* Card Content */}
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex justify-between items-start mb-8">
                   <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
@@ -565,7 +558,6 @@ const DashboardHome = () => {
                     Unlocking full potential with priority support & AI tools.
                   </p>
 
-                  {/* Progress Bar */}
                   <div className="mb-6">
                     <div className="flex justify-between text-xs font-bold mb-2">
                       <span className="text-slate-400">Storage Used</span>
@@ -590,6 +582,13 @@ const DashboardHome = () => {
           </motion.div>
         </div>
       </div>
+
+      {/* --- CREATE ORDER MODAL --- */}
+      <CreateOrderModal
+        isOpen={isOrderModalOpen}
+        onClose={() => setIsOrderModalOpen(false)}
+        onSubmit={handleCreateOrder}
+      />
     </main>
   );
 };

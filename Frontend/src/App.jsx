@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Courses from "./pages/Courses";
 import ContactUs from "./pages/ContactUs";
 import Scroll from "./components/ScrollTop"
+import PaymentSuccess from "./components/PaymentSuccess";
 
 
 // Dashboard Components
@@ -24,7 +25,7 @@ import UpdatePassword from "./pages/UpdatePassword";
 const App = () => {
   return (
     <Router>
-     <Scroll/>
+      <Scroll />
       <Routes>
         {/* PUBLIC ROUTES (With Public Navbar & Footer) */}
         <Route
@@ -75,6 +76,7 @@ const App = () => {
           <Route path="profile" element={<Profile />} />
           <Route path="plans" element={<UpgradePlan />} />
           <Route path="updatepassword" element={<UpdatePassword />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
         </Route>
       </Routes>
     </Router>
