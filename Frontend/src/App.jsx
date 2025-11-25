@@ -9,11 +9,10 @@ import Home from "./pages/Home";
 import Services from "./pages/services";
 import ContactUs from "./pages/ContactUs";
 import Scroll from "./components/ScrollTop"
-<<<<<<< HEAD
+
 import PaymentSuccess from "./components/PaymentSuccess";
-=======
+
 import Pricing from "./pages/Pricing";   // <-- NEW IMPORT
->>>>>>> a3098be8fa65e7f58680de51097c0bc4bb64e125
 
 
 // Dashboard Components
