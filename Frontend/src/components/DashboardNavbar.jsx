@@ -52,7 +52,7 @@ const DashboardNavbar = () => {
       name: "Dashboard",
       path: "/dashboard",
       icon: LayoutDashboard,
-      end: false,
+      end: true,
     },
     {
       name: "Training",

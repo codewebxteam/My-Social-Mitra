@@ -16,6 +16,8 @@ build/
 .env.production
 .env.test
 
+serviceAccountKey.json
+
 # Vite cache
 .vite/
 vite.config.local.*
