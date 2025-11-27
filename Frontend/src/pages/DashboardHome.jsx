@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShoppingBag,
@@ -19,64 +19,21 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getAuth } from "firebase/auth";
-import CreateOrderModal from "../components/CreateOrderModal"; // <--- Import Modal
-
-// --- MOCK STATS DATA ---
-const stats = [
-  {
-    id: 1,
-    title: "Total Revenue",
-    value: "₹1.2L",
-    sub: "Total Orders: 1,248",
-    icon: Sparkles,
-    color: "from-blue-500 to-indigo-600",
-    bg: "bg-blue-50",
-    trend: "+12%",
-    positive: true,
-  },
-  {
-    id: 2,
-    title: "Completed",
-    value: "1,102",
-    sub: "Orders Delivered",
-    icon: CheckCircle2,
-    color: "from-green-500 to-emerald-600",
-    bg: "bg-green-50",
-    trend: "+8%",
-    positive: true,
-  },
-  {
-    id: 3,
-    title: "In Progress",
-    value: "134",
-    sub: "Active Projects",
-    icon: Clock,
-    color: "from-orange-500 to-amber-600",
-    bg: "bg-orange-50",
-    trend: "-2%",
-    positive: false,
-  },
-  {
-    id: 4,
-    title: "Cancelled",
-    value: "12",
-    sub: "Refunded / Void",
-    icon: XCircle,
-    color: "from-red-500 to-rose-600",
-    bg: "bg-red-50",
-    trend: "0%",
-    positive: true,
-  },
-];
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  where,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { db } from "../firebase";
+import CreateOrderModal from "../components/CreateOrderModal";
 
 // --- PIE CHART ---
-const SimplePieChart = () => {
-  const segments = [
-    { color: "#22c55e", percent: 75, label: "Delivered" },
-    { color: "#f97316", percent: 20, label: "Pending" },
-    { color: "#ef4444", percent: 5, label: "Cancelled" },
-  ];
-
+const SimplePieChart = ({ segments }) => {
   let currentAngle = 0;
   const gradientParts = segments.map((seg) => {
     const start = currentAngle;
@@ -84,16 +41,25 @@ const SimplePieChart = () => {
     currentAngle = end;
     return `${seg.color} ${start}% ${end}%`;
   });
-  const gradient = `conic-gradient(${gradientParts.join(", ")})`;
+
+  const background =
+    segments.length && segments.some((s) => s.percent > 0)
+      ? `conic-gradient(${gradientParts.join(", ")})`
+      : "conic-gradient(#f1f5f9 0% 100%)";
+
+  const completedSeg = segments.find((s) => s.label === "Delivered");
+  const successRate = completedSeg ? completedSeg.percent : 0;
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-center gap-8 h-full">
       <div
         className="relative w-48 h-48 rounded-full shrink-0 p-4 bg-slate-50 shadow-inner"
-        style={{ background: gradient }}
+        style={{ background }}
       >
         <div className="absolute inset-3 bg-white rounded-full flex items-center justify-center flex-col shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]">
-          <span className="text-3xl font-bold text-slate-900">95%</span>
+          <span className="text-3xl font-bold text-slate-900">
+            {successRate}%
+          </span>
           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
             Success Rate
           </span>
@@ -123,55 +89,49 @@ const SimplePieChart = () => {
 };
 
 // --- BAR CHART ---
-const SimpleBarChart = ({ view }) => {
-  const dataMap = {
-    Weekly: {
-      values: [40, 65, 30, 85, 55, 95, 70],
-      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    },
-    Monthly: {
-      values: [60, 45, 80, 50],
-      labels: ["Week 1", "Week 2", "Week 3", "Week 4"],
-    },
-  };
-  const currentData = dataMap[view];
+const SimpleBarChart = ({ data }) => {
+  const maxVal = Math.max(...data.values, 1);
 
   return (
-    <div className="h-64 flex items-end justify-between gap-3 pt-8 w-full px-2">
-      {currentData.values.map((h, i) => (
-        <div
-          key={`${view}-${i}`}
-          className="group flex flex-col items-center gap-3 w-full h-full justify-end relative"
-        >
-          <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl z-20 whitespace-nowrap">
-            {h} Orders
-            <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
-          </div>
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: `${h}%`, opacity: 1 }}
-            transition={{
-              duration: 0.6,
-              delay: i * 0.05,
-              type: "spring",
-              stiffness: 100,
-            }}
-            className="w-full max-w-[40px] rounded-t-xl relative overflow-hidden"
+    <div className="h-64 flex items-end justify-between gap-2 sm:gap-3 pt-8 w-full px-2">
+      {data.values.map((val, i) => {
+        const heightPercent = (val / maxVal) * 100;
+        return (
+          <div
+            key={i}
+            className="group flex flex-col items-center gap-3 w-full h-full justify-end relative"
           >
-            <div
-              className={`absolute inset-0 bg-gradient-to-t ${
-                h > 80
-                  ? "from-[#f7650b] to-orange-400"
-                  : "from-slate-300 to-slate-200 group-hover:from-orange-300 group-hover:to-orange-200"
-              } transition-colors duration-300`}
-            ></div>
-            <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/50"></div>
-          </motion.div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[#f7650b] transition-colors">
-            {currentData.labels[i]}
-          </span>
-        </div>
-      ))}
+            <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl z-20 whitespace-nowrap">
+              {val} Orders
+              <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
+            </div>
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: `${heightPercent}%`, opacity: 1 }}
+              transition={{
+                duration: 0.6,
+                delay: i * 0.05,
+                type: "spring",
+                stiffness: 100,
+              }}
+              className="w-full max-w-[40px] rounded-t-xl relative overflow-hidden bg-slate-100"
+            >
+              <div
+                className={`absolute inset-0 bg-gradient-to-t transition-colors duration-300
+                  ${
+                    val > 0
+                      ? "from-[#f7650b] to-orange-400"
+                      : "from-slate-200 to-slate-100"
+                  }
+                `}
+              />
+            </motion.div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[#f7650b] transition-colors">
+              {data.labels[i]}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -179,46 +139,17 @@ const SimpleBarChart = ({ view }) => {
 const DashboardHome = () => {
   const auth = getAuth();
   const user = auth.currentUser;
+  const navigate = useNavigate();
   const agencyName = user?.displayName || "Partner";
 
   const [performanceView, setPerformanceView] = useState("Weekly");
   const [greeting, setGreeting] = useState("Good Morning");
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false); // <--- Modal State
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
-  // --- INITIAL ORDERS DATA ---
-  const [orders, setOrders] = useState([
-    {
-      id: "#ORD-7821",
-      client: "Rahul Kumar",
-      service: "Video Editing",
-      date: "22 Nov, 10:30 AM",
-      status: "Delivered",
-      amount: "₹4,500",
-      avatar:
-        "https://ui-avatars.com/api/?name=Rahul+Kumar&background=0D8ABC&color=fff",
-    },
-    {
-      id: "#ORD-7820",
-      client: "Design Co.",
-      service: "Thumbnail Pack",
-      date: "21 Nov, 04:15 PM",
-      status: "Pending",
-      amount: "₹1,200",
-      avatar:
-        "https://ui-avatars.com/api/?name=Design+Co&background=f7650b&color=fff",
-    },
-    {
-      id: "#ORD-7819",
-      client: "Sneha S.",
-      service: "Reels Bundle",
-      date: "21 Nov, 02:00 PM",
-      status: "Processing",
-      amount: "₹8,000",
-      avatar:
-        "https://ui-avatars.com/api/?name=Sneha+S&background=6b21a8&color=fff",
-    },
-  ]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // --- GREETING ---
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good Morning");
@@ -226,19 +157,262 @@ const DashboardHome = () => {
     else setGreeting("Good Evening");
   }, []);
 
-  // --- HANDLE NEW ORDER SUBMISSION ---
-  const handleCreateOrder = (newOrderData) => {
-    const newOrder = {
-      id: `#ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      client: newOrderData.client,
-      service: newOrderData.service,
-      date: "Just now",
-      status: "Pending",
-      amount: `₹${newOrderData.amount}`,
-      avatar: `https://ui-avatars.com/api/?name=${newOrderData.client}&background=random&color=fff`,
+  // --- FETCH ORDERS (Fixed: Sorting Client Side to Avoid Index Issue) ---
+  useEffect(() => {
+    if (!user) return;
+
+    // FIX: Removed 'orderBy' from query to prevent "Missing Index" error
+    const q = query(
+      collection(db, "orders"),
+      where("partnerId", "==", user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedOrders = snapshot.docs.map((doc) => {
+          const d = doc.data();
+          // Robust Date Parsing
+          let dateObj = new Date();
+          if (d.createdAt?.toDate) {
+            dateObj = d.createdAt.toDate();
+          } else if (d.createdAt) {
+            dateObj = new Date(d.createdAt);
+          }
+
+          return {
+            id: doc.id,
+            ...d,
+            createdAtDate: dateObj,
+            dateFormatted: dateObj.toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        });
+
+        // Sort manually in JS (Newest first)
+        fetchedOrders.sort((a, b) => b.createdAtDate - a.createdAtDate);
+
+        setOrders(fetchedOrders);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching orders:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // --- CALCULATE STATS (Live Dashboard Logic) ---
+  const { statsData, chartData } = useMemo(() => {
+    const now = new Date();
+    const today = now.toDateString();
+
+    let totalRev = 0;
+    let completed = 0;
+    let inProgress = 0;
+    let cancelled = 0;
+
+    let revToday = 0;
+    let completedToday = 0;
+    let inProgressToday = 0;
+    let cancelledToday = 0;
+
+    const weeklyDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
+
+    const monthlyWeeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
+    const monthlyCounts = [0, 0, 0, 0];
+
+    orders.forEach((order) => {
+      // 1. Get Amount
+      let amt = 0;
+      if (order.pricing && order.pricing.priceFromClient) {
+        amt = Number(order.pricing.priceFromClient);
+      } else if (order.amount) {
+        amt = parseFloat(order.amount.toString().replace(/[₹,]/g, "")) || 0;
+      }
+
+      const orderDate = order.createdAtDate || new Date();
+      const isToday = orderDate.toDateString() === today;
+
+      // 2. Status Logic (Robust & Case Insensitive)
+      const statusRaw = (order.status || "Pending").toLowerCase();
+      let statusType = "in_progress";
+
+      if (statusRaw.includes("delivered") || statusRaw.includes("completed")) {
+        statusType = "completed";
+      } else if (statusRaw.includes("cancel") || statusRaw.includes("reject")) {
+        statusType = "cancelled";
+      } else {
+        // Includes "pending", "processing", "in_progress", "approval", etc.
+        statusType = "in_progress";
+      }
+
+      // 3. Aggregation
+      if (statusType === "completed") {
+        completed++;
+        if (isToday) completedToday++;
+      } else if (statusType === "in_progress") {
+        inProgress++;
+        if (isToday) inProgressToday++;
+      } else if (statusType === "cancelled") {
+        cancelled++;
+        if (isToday) cancelledToday++;
+      }
+
+      // Add to Revenue if NOT cancelled
+      if (statusType !== "cancelled") {
+        totalRev += amt;
+        if (isToday) revToday += amt;
+      }
+
+      // 4. Charts (Weekly)
+      const timeDiff = now.getTime() - orderDate.getTime();
+      const daysDiff = timeDiff / (1000 * 3600 * 24);
+      if (daysDiff < 7 && daysDiff >= 0) {
+        weeklyCounts[orderDate.getDay()]++;
+      }
+
+      // 5. Charts (Monthly)
+      if (
+        orderDate.getMonth() === now.getMonth() &&
+        orderDate.getFullYear() === now.getFullYear()
+      ) {
+        const date = orderDate.getDate();
+        if (date <= 7) monthlyCounts[0]++;
+        else if (date <= 14) monthlyCounts[1]++;
+        else if (date <= 21) monthlyCounts[2]++;
+        else monthlyCounts[3]++;
+      }
+    });
+
+    const total = orders.length || 1;
+    const pieSegments = [
+      {
+        color: "#22c55e",
+        percent: Math.round((completed / total) * 100),
+        label: "Delivered",
+      },
+      {
+        color: "#f97316",
+        percent: Math.round((inProgress / total) * 100),
+        label: "Pending",
+      },
+      {
+        color: "#ef4444",
+        percent: Math.round((cancelled / total) * 100),
+        label: "Cancelled",
+      },
+    ];
+
+    return {
+      statsData: {
+        revenue: `₹${(totalRev / 1000).toFixed(1)}k`,
+        completed,
+        inProgress,
+        cancelled,
+        pieSegments,
+        revToday: `+₹${revToday}`,
+        completedToday: `+${completedToday}`,
+        inProgressToday: `${inProgressToday} new`,
+        cancelledToday: `${cancelledToday}`,
+      },
+      chartData: {
+        Weekly: { values: weeklyCounts, labels: weeklyDays },
+        Monthly: { values: monthlyCounts, labels: monthlyWeeks },
+      },
     };
-    setOrders([newOrder, ...orders]); // Add to top of list
+  }, [orders]);
+
+  // --- HANDLE CREATE ORDER (Saves Full Data) ---
+  const handleCreateOrder = async (orderPayload) => {
+    if (!user) return;
+
+    try {
+      // Spread orderPayload to get ALL fields (client object, brief, pricing object, etc.)
+      const fullOrderData = {
+        ...orderPayload,
+
+        partnerId: user.uid,
+        partnerName: agencyName,
+        partnerEmail: user.email,
+
+        displayId: `#ORD-${Math.floor(10000 + Math.random() * 90000)}`,
+        createdAt: serverTimestamp(),
+        status: orderPayload.status || "PENDING_APPROVAL_FROM_ADMIN",
+
+        // Helper fields for simple access if needed
+        amount: `₹${orderPayload.pricing?.priceFromClient || 0}`,
+        avatar: `https://ui-avatars.com/api/?name=${
+          orderPayload.client?.name || "Client"
+        }&background=random&color=fff`,
+      };
+
+      await addDoc(collection(db, "orders"), fullOrderData);
+      setIsOrderModalOpen(false);
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      alert("Failed to place order. Check console for details.");
+    }
   };
+
+  // --- UI STATS ARRAY ---
+  const statsUI = [
+    {
+      id: 1,
+      title: "Total Revenue",
+      value: statsData.revenue,
+      sub: `Total Orders: ${orders.length}`,
+      icon: Sparkles,
+      color: "from-blue-500 to-indigo-600",
+      bg: "bg-blue-50",
+      trend: statsData.revToday,
+      positive: true,
+      trendLabel: "Today",
+    },
+    {
+      id: 2,
+      title: "Completed",
+      value: statsData.completed,
+      sub: "Orders Delivered",
+      icon: CheckCircle2,
+      color: "from-green-500 to-emerald-600",
+      bg: "bg-green-50",
+      trend: statsData.completedToday,
+      positive: true,
+      trendLabel: "Today",
+    },
+    {
+      id: 3,
+      title: "In Progress",
+      value: statsData.inProgress,
+      sub: "Active Projects",
+      icon: Clock,
+      color: "from-orange-500 to-amber-600",
+      bg: "bg-orange-50",
+      trend: statsData.inProgressToday,
+      positive: true,
+      trendLabel: "Today",
+    },
+    {
+      id: 4,
+      title: "Cancelled",
+      value: statsData.cancelled,
+      sub: "Refunded / Void",
+      icon: XCircle,
+      color: "from-red-500 to-rose-600",
+      bg: "bg-red-50",
+      trend: statsData.cancelledToday,
+      positive: false,
+      trendLabel: "Today",
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-[#f8fafc] font-sans relative overflow-x-hidden pb-24">
@@ -289,7 +463,9 @@ const DashboardHome = () => {
               className="text-slate-500 mt-2 text-lg"
             >
               You have{" "}
-              <span className="font-bold text-slate-900">12 pending tasks</span>{" "}
+              <span className="font-bold text-slate-900">
+                {statsData.inProgress} pending tasks
+              </span>{" "}
               requiring your attention today.
             </motion.p>
           </div>
@@ -305,7 +481,7 @@ const DashboardHome = () => {
             </button>
             <div className="w-px h-8 bg-slate-200 mx-1"></div>
             <button
-              onClick={() => setIsOrderModalOpen(true)} // <--- Open Modal
+              onClick={() => setIsOrderModalOpen(true)}
               className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-[#f7650b] transition-all shadow-lg hover:shadow-orange-500/25 flex items-center gap-2"
             >
               <Zap className="w-4 h-4 fill-current" /> Create Order
@@ -315,7 +491,7 @@ const DashboardHome = () => {
 
         {/* --- 2. STATS BENTO GRID --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {stats.map((stat, index) => (
+          {statsUI.map((stat, index) => (
             <motion.div
               key={stat.id}
               initial={{ opacity: 0, y: 20 }}
@@ -326,26 +502,25 @@ const DashboardHome = () => {
             >
               <div
                 className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 rounded-full blur-2xl transition-opacity duration-500`}
-              ></div>
+              />
               <div className="flex justify-between items-start mb-8">
                 <div
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br ${stat.color} text-white shadow-lg`}
                 >
                   <stat.icon className="w-6 h-6" />
                 </div>
+
                 <div
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
                     stat.positive
                       ? "bg-green-50 text-green-600"
-                      : "bg-red-50 text-red-500"
+                      : "bg-slate-100 text-slate-500"
                   }`}
                 >
                   {stat.trend}
-                  {stat.positive ? (
-                    <TrendingUp className="w-3 h-3" />
-                  ) : (
-                    <TrendingUp className="w-3 h-3 rotate-180" />
-                  )}
+                  <span className="text-[9px] opacity-70 ml-1 font-normal">
+                    {stat.trendLabel}
+                  </span>
                 </div>
               </div>
               <div>
@@ -394,7 +569,7 @@ const DashboardHome = () => {
                 ))}
               </div>
             </div>
-            <SimpleBarChart view={performanceView} />
+            <SimpleBarChart data={chartData[performanceView]} />
           </motion.div>
 
           <motion.div
@@ -410,19 +585,19 @@ const DashboardHome = () => {
               </button>
             </div>
             <div className="flex-grow flex items-center justify-center">
-              <SimplePieChart />
+              <SimplePieChart segments={statsData.pieSegments} />
             </div>
             <div className="mt-6 pt-6 border-t border-slate-50">
               <p className="text-center text-sm text-slate-500">
-                Your delivery rate is{" "}
-                <span className="text-green-500 font-bold">Top 5%</span> of all
-                agencies.
+                Your delivery rate is calculated based on{" "}
+                <span className="text-green-500 font-bold">Completed</span> vs
+                Total orders.
               </p>
             </div>
           </motion.div>
         </div>
 
-        {/* --- 4. BOTTOM GRID --- */}
+        {/* --- 4. BOTTOM GRID (ORDERS TABLE) --- */}
         <div className="grid lg:grid-cols-12 gap-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -458,71 +633,124 @@ const DashboardHome = () => {
                       Status
                     </th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Amount
+                      Amount (Client)
                     </th>
                     <th className="px-6 py-4"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {orders.map(
-                    (
-                      order // <--- Using STATE 'orders' here
-                    ) => (
-                      <tr
-                        key={order.id}
-                        className="group hover:bg-slate-50/80 transition-colors"
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan="5"
+                        className="text-center py-10 text-slate-400"
                       >
-                        <td className="px-8 py-4">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={order.avatar}
-                              alt={order.client}
-                              className="w-10 h-10 rounded-xl shadow-sm"
-                            />
-                            <div>
-                              <div className="font-bold text-slate-900 text-sm">
-                                {order.client}
-                              </div>
-                              <div className="text-xs text-slate-400 font-medium">
-                                {order.id}
+                        Loading orders...
+                      </td>
+                    </tr>
+                  ) : orders.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="5"
+                        className="text-center py-10 text-slate-400"
+                      >
+                        No orders found. Click "Create Order" to get started.
+                      </td>
+                    </tr>
+                  ) : (
+                    orders.map((order) => {
+                      // FIX: Safely extract client name if it's an object or string
+                      const displayClient =
+                        typeof order.client === "object" &&
+                        order.client !== null
+                          ? order.client.name || "Client"
+                          : order.client || "Client";
+
+                      // FIX: Safely extract service name if it's an object or string
+                      const displayService =
+                        typeof order.service === "object" &&
+                        order.service !== null
+                          ? order.service.name || "Service"
+                          : order.service || "Service";
+
+                      // FIX: Display Price (Prefer numeric, fall back to string)
+                      const displayPrice =
+                        order.pricing && order.pricing.priceFromClient
+                          ? `₹${order.pricing.priceFromClient}`
+                          : order.amount;
+
+                      // FIX: Status Formatting (Case Insensitive)
+                      const statusRaw = (order.status || "Pending")
+                        .replace(/_/g, " ")
+                        .replace("FROM ADMIN", "")
+                        .toLowerCase();
+
+                      const statusFormatted =
+                        statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+
+                      return (
+                        <tr
+                          key={order.id}
+                          className="group hover:bg-slate-50/80 transition-colors"
+                        >
+                          <td className="px-8 py-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={
+                                  order.avatar ||
+                                  `https://ui-avatars.com/api/?name=${displayClient}&background=random&color=fff`
+                                }
+                                alt={displayClient}
+                                className="w-10 h-10 rounded-xl shadow-sm"
+                              />
+                              <div>
+                                <div className="font-bold text-slate-900 text-sm">
+                                  {displayClient}
+                                </div>
+                                <div className="text-xs text-slate-400 font-medium">
+                                  {order.displayId || order.id?.substring(0, 8)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                            <Package className="w-4 h-4 text-slate-400" />{" "}
-                            {order.service}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
-                                   ${
-                                     order.status === "Delivered"
-                                       ? "bg-green-50 text-green-600 border-green-100"
-                                       : order.status === "Pending"
-                                       ? "bg-orange-50 text-orange-600 border-orange-100"
-                                       : "bg-blue-50 text-blue-600 border-blue-100"
-                                   }
-                                `}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                            {order.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-bold text-slate-900">
-                            {order.amount}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button className="p-2 rounded-lg text-slate-300 hover:bg-white hover:text-[#f7650b] hover:shadow-md transition-all">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    )
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                              <Package className="w-4 h-4 text-slate-400" />{" "}
+                              {displayService}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border capitalize
+                                    ${
+                                      statusRaw.includes("delivered") ||
+                                      statusRaw.includes("completed")
+                                        ? "bg-green-50 text-green-600 border-green-100"
+                                        : statusRaw.includes("pending") ||
+                                          statusRaw.includes("processing") ||
+                                          statusRaw.includes("approval")
+                                        ? "bg-orange-50 text-orange-600 border-orange-100"
+                                        : "bg-blue-50 text-blue-600 border-blue-100"
+                                    }
+                                  `}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                              {statusFormatted}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-bold text-slate-900">
+                              {displayPrice}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button className="p-2 rounded-lg text-slate-300 hover:bg-white hover:text-[#f7650b] hover:shadow-md transition-all">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -573,7 +801,10 @@ const DashboardHome = () => {
                     </div>
                   </div>
 
-                  <button className="w-full py-4 bg-white text-slate-900 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 shadow-lg">
+                  <button
+                    onClick={() => navigate("/dashboard/plans")}
+                    className="w-full py-4 bg-white text-slate-900 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 shadow-lg"
+                  >
                     Upgrade Plan <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -588,6 +819,7 @@ const DashboardHome = () => {
         isOpen={isOrderModalOpen}
         onClose={() => setIsOrderModalOpen(false)}
         onSubmit={handleCreateOrder}
+        partnerName={agencyName}
       />
     </main>
   );

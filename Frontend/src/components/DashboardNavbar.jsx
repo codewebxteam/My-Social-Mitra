@@ -11,6 +11,9 @@ import {
   Crown,
   CreditCard,
   Lock,
+  CheckCircle2,
+  MessageSquare,
+  Check,
 } from "lucide-react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import Logo from "./Logo";
@@ -19,6 +22,7 @@ import { getAuth, signOut } from "firebase/auth";
 const DashboardNavbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false); // Notification State
 
   const auth = getAuth();
   const navigate = useNavigate();
@@ -29,10 +33,44 @@ const DashboardNavbar = () => {
   const userData = {
     name: user?.displayName || "Agency Partner",
     email: user?.email || "partner@socialmitra.com",
-    plan: "Supreme Master",
+    plan: "Starter", // <--- Updated to "Starter"
     avatar: `https://ui-avatars.com/api/?name=${
       user?.displayName || "Agency"
     }&background=f7650b&color=fff`,
+  };
+
+  // --- MOCK NOTIFICATIONS DATA ---
+  const [notifications, setNotifications] = useState([
+    {
+      id: 1,
+      type: "admin",
+      title: "Admin Message",
+      message: "System maintenance scheduled for tonight at 2 AM.",
+      time: "2h ago",
+      read: false,
+    },
+    {
+      id: 2,
+      type: "order",
+      title: "Order Completed",
+      message: "Order #ORD-7821 has been successfully delivered.",
+      time: "5h ago",
+      read: false,
+    },
+    {
+      id: 3,
+      type: "order",
+      title: "Order Completed",
+      message: "Thumbnail Pack for Design Co. is ready.",
+      time: "1d ago",
+      read: true,
+    },
+  ]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleMarkAllRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   useEffect(() => {
@@ -72,8 +110,6 @@ const DashboardNavbar = () => {
     <>
       {/* ==============================================================
           TOP HEADER (Visible on Desktop & Mobile)
-          - Desktop: Logo + Nav + Profile
-          - Mobile: Logo + Profile (Nav moves to bottom)
       ============================================================== */}
       <motion.nav
         initial={{ y: -100 }}
@@ -86,7 +122,7 @@ const DashboardNavbar = () => {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 md:px-6 flex items-center justify-between">
-          {/* --- LEFT: LOGO (Always Visible) --- */}
+          {/* --- LEFT: LOGO --- */}
           <NavLink to="/dashboard" className="flex items-center gap-2 group">
             <div className="scale-75 md:scale-90 transition-transform group-hover:scale-95 md:group-hover:scale-100">
               <Logo />
@@ -99,15 +135,11 @@ const DashboardNavbar = () => {
                 <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">
                   Partner
                 </span>
-                {/* Badge */}
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#f7650b]/10 border border-[#f7650b]/20 text-[#f7650b] text-[9px] font-bold uppercase">
-                  <Crown className="w-2 h-2" /> Pro
-                </span>
               </div>
             </div>
           </NavLink>
 
-          {/* --- CENTER: DESKTOP NAVIGATION (Hidden on Mobile) --- */}
+          {/* --- CENTER: DESKTOP NAVIGATION --- */}
           <div className="hidden md:flex items-center bg-slate-50 p-1.5 rounded-full border border-slate-200/60 shadow-inner relative">
             {navLinks.map((item) => (
               <NavLink
@@ -150,13 +182,105 @@ const DashboardNavbar = () => {
 
           {/* --- RIGHT: ACTIONS & PROFILE --- */}
           <div className="flex items-center gap-2 md:gap-4">
-            {/* Notification Bell */}
-            <button className="relative p-2 md:p-2.5 rounded-full text-slate-400 hover:text-[#f7650b] hover:bg-orange-50 transition-all duration-300">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            {/* --- NOTIFICATION BELL & DROPDOWN --- */}
+            <div className="relative">
+              <button
+                onClick={() => setIsNotifOpen(!isNotifOpen)}
+                className={`relative p-2 md:p-2.5 rounded-full transition-all duration-300 ${
+                  isNotifOpen
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-400 hover:text-[#f7650b] hover:bg-orange-50"
+                }`}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                )}
+              </button>
 
-            {/* Profile Dropdown */}
+              {/* Notification Dropdown */}
+              <AnimatePresence>
+                {isNotifOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsNotifOpen(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 top-full mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden ring-1 ring-slate-900/5 mr-[-50px] md:mr-0"
+                    >
+                      {/* Notif Header */}
+                      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <h4 className="font-bold text-slate-900 text-sm">
+                          Notifications
+                        </h4>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={handleMarkAllRead}
+                            className="text-[10px] font-bold text-[#f7650b] hover:text-orange-700 flex items-center gap-1"
+                          >
+                            <Check className="w-3 h-3" /> Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Notif List */}
+                      <div className="max-h-[300px] overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs">
+                            No notifications yet.
+                          </div>
+                        ) : (
+                          notifications.map((item) => (
+                            <div
+                              key={item.id}
+                              className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors flex gap-3 ${
+                                !item.read ? "bg-orange-50/30" : ""
+                              }`}
+                            >
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                  item.type === "admin"
+                                    ? "bg-blue-100 text-blue-600"
+                                    : "bg-green-100 text-green-600"
+                                }`}
+                              >
+                                {item.type === "admin" ? (
+                                  <MessageSquare className="w-4 h-4" />
+                                ) : (
+                                  <CheckCircle2 className="w-4 h-4" />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="text-xs font-bold text-slate-800">
+                                    {item.title}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    {item.time}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                  {item.message}
+                                </p>
+                              </div>
+                              {!item.read && (
+                                <div className="w-2 h-2 bg-[#f7650b] rounded-full mt-2 shrink-0" />
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* --- PROFILE DROPDOWN --- */}
             <div className="relative">
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -166,7 +290,8 @@ const DashboardNavbar = () => {
                   <span className="text-xs font-bold text-slate-900 leading-tight">
                     {userData.name}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-medium">
+                  {/* Display Package Name Here */}
+                  <span className="text-[10px] text-[#f7650b] font-bold uppercase tracking-wide">
                     {userData.plan}
                   </span>
                 </div>
@@ -185,7 +310,7 @@ const DashboardNavbar = () => {
                 />
               </button>
 
-              {/* Profile Dropdown Menu */}
+              {/* Profile Menu */}
               <AnimatePresence>
                 {isProfileOpen && (
                   <>
@@ -232,27 +357,28 @@ const DashboardNavbar = () => {
                               label: "My Profile",
                               color: "text-blue-600",
                               bg: "bg-blue-50",
-                              onClick: () => navigate("/dashboard/profile"), // Updates Route
+                              onClick: () => navigate("/dashboard/profile"),
                             },
                             {
                               icon: CreditCard,
                               label: "Upgrade Package",
                               color: "text-[#f7650b]",
                               bg: "bg-orange-50",
-                              onClick: () => navigate("/dashboard/plans"), // Updates Route
+                              onClick: () => navigate("/dashboard/plans"),
                             },
                             {
                               icon: Lock,
                               label: "Change Password",
                               color: "text-purple-600",
                               bg: "bg-purple-50",
-                              onClick: () => navigate("/dashboard/updatepassword"),
+                              onClick: () =>
+                                navigate("/dashboard/updatepassword"),
                             },
                           ].map((menuItem) => (
                             <button
                               key={menuItem.label}
                               onClick={() => {
-                                setIsProfileOpen(false); // Close menu
+                                setIsProfileOpen(false);
                                 if (menuItem.onClick) menuItem.onClick();
                               }}
                               className="w-full flex items-center gap-3 p-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all text-left group"
@@ -289,7 +415,7 @@ const DashboardNavbar = () => {
       </motion.nav>
 
       {/* ==============================================================
-          MOBILE BOTTOM NAVIGATION (Fixed at bottom)
+          MOBILE BOTTOM NAVIGATION
       ============================================================== */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-slate-200 pb-[env(safe-area-inset-bottom)] px-4 shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
         <div className="flex justify-between items-center h-16 relative">
@@ -309,7 +435,6 @@ const DashboardNavbar = () => {
             >
               {({ isActive }) => (
                 <>
-                  {/* Active Indicator Pill at Top */}
                   {isActive && (
                     <motion.div
                       layoutId="mobile-active-pill"
@@ -321,8 +446,6 @@ const DashboardNavbar = () => {
                       }}
                     />
                   )}
-
-                  {/* Icon */}
                   <div
                     className={`relative p-1 transition-transform duration-300 ${
                       isActive ? "-translate-y-1" : "translate-y-0"
@@ -334,8 +457,6 @@ const DashboardNavbar = () => {
                       }`}
                     />
                   </div>
-
-                  {/* Label */}
                   <span
                     className={`text-[10px] font-bold tracking-wide transition-all duration-300 ${
                       isActive
@@ -352,7 +473,7 @@ const DashboardNavbar = () => {
         </div>
       </div>
 
-      {/* Spacer to prevent content hiding behind fixed top navbar */}
+      {/* Spacer */}
       <div className="h-20 md:h-24" />
     </>
   );

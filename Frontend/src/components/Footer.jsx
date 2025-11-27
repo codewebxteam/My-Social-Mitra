@@ -12,16 +12,16 @@ import {
 
 const footerLinks = {
   Product: [
-    { name: "Services", href: "#" },
+    { name: "Services", href: "/services" },
     { name: "Mentorship", href: "#" },
-    { name: "Pricing", href: "#" },
+    { name: "Pricing", href: "/pricing" },
     { name: "Certificates", href: "#" },
   ],
   Company: [
     { name: "About Us", href: "#" },
-    { name: "Careers", href: "#" },
-    { name: "Press", href: "#" },
-    { name: "Contact", href: "#" },
+    { name: "Contact", href: "/contact" },
+    { name: "Admin Login", href: "/admin" }, 
+    { name: "Staff Login", href: "#" },
   ],
   Resources: [
     { name: "Blog", href: "#" },

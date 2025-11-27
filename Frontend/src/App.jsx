@@ -1,101 +1,106 @@
- import React from "react";
+import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { ReactLenis } from "lenis/react";
+import "lenis/dist/lenis.css";
+import "./index.css";
 
-
-// Public Components
+// Public
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Home from "./pages/Home";
 import Services from "./pages/services";
 import ContactUs from "./pages/ContactUs";
-import Scroll from "./components/ScrollTop"
+import Scroll from "./components/ScrollTop";
+import Pricing from "./pages/Pricing";
 
-import PaymentSuccess from "./components/PaymentSuccess";
-
-import Pricing from "./pages/Pricing";   // <-- NEW IMPORT
-
-
-// Dashboard Components
+// Partner Dashboard
 import DashboardLayout from "./pages/DashboardLayout";
 import DashboardHome from "./pages/DashboardHome";
 import DashboardTraining from "./pages/DashboardTraining";
 import DashboardAgency from "./pages/DashboardAgency";
-import Profile from "./pages/Profile"; 
+import Profile from "./pages/Profile";
 import UpgradePlan from "./pages/UpgradePlan";
 import UpdatePassword from "./pages/UpdatePassword";
 
+// Admin Dashboard (NEW)
+import AdminLayout from "./pages/AdminLayout";
+import AdminDashboard from "./pages/AdminDashboard";
+import StaffPerformance from "./pages/StaffPerformance";
 
 const App = () => {
   return (
-    <Router>
-      <Scroll />
-      <Routes>
-        {/* PUBLIC ROUTES (With Public Navbar & Footer) */}
-        <Route
-          path="/"
-          element={
-            <>
-              <Navbar />
-              <div className="flex-grow">
-                <Home />
-              </div>
-              <Footer />
-            </>
-          }
-        />
+    <ReactLenis root>
+      <Router>
+        <Scroll />
+        <Routes>
+          {/* PUBLIC ROUTES */}
+          <Route
+            path="/"
+            element={
+              <>
+                <Navbar />
+                <div className="flex-grow">
+                  <Home />
+                </div>
+                <Footer />
+              </>
+            }
+          />
+          <Route
+            path="/services"
+            element={
+              <>
+                <Navbar />
+                <div className="flex-grow">
+                  <Services />
+                </div>
+                <Footer />
+              </>
+            }
+          />
+          <Route
+            path="/pricing"
+            element={
+              <>
+                <Navbar />
+                <div className="flex-grow">
+                  <Pricing />
+                </div>
+                <Footer />
+              </>
+            }
+          />
+          <Route
+            path="/contact"
+            element={
+              <>
+                <Navbar />
+                <div className="flex-grow">
+                  <ContactUs />
+                </div>
+                <Footer />
+              </>
+            }
+          />
 
-        <Route
-          path="/services"
-          element={
-            <>
-              <Navbar />
-              <div className="flex-grow">
-                <Services />
-              </div>
-              <Footer />
-            </>
-          }
-        />
+          {/* PARTNER DASHBOARD ROUTES */}
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<DashboardHome />} />
+            <Route path="training" element={<DashboardTraining />} />
+            <Route path="agency" element={<DashboardAgency />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="plans" element={<UpgradePlan />} />
+            <Route path="updatepassword" element={<UpdatePassword />} />
+          </Route>
 
-        <Route
-          path="/pricing"
-          element={
-            <>
-              <Navbar />
-              <div className="flex-grow">
-                <Pricing />
-              </div>
-              <Footer />
-            </>
-          }
-        />
-
-        <Route
-          path="/contact"
-          element={
-            <>
-              <Navbar />
-              <div className="flex-grow">
-                <ContactUs />
-              </div>
-              <Footer />
-            </>
-          }
-        />
-
-        {/* DASHBOARD ROUTES (Protected Layout) */}
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardHome />} />
-          <Route path="training" element={<DashboardTraining />} />
-          <Route path="agency" element={<DashboardAgency />} />
-          {/* Added Profile Route: Accessible at /dashboard/profile */}
-          <Route path="profile" element={<Profile />} />
-          <Route path="plans" element={<UpgradePlan />} />
-          <Route path="updatepassword" element={<UpdatePassword />} />
-
-        </Route>
-      </Routes>
-    </Router>
+          {/* ADMIN DASHBOARD ROUTES */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="staff" element={<StaffPerformance />} />
+          </Route>
+        </Routes>
+      </Router>
+    </ReactLenis>
   );
 };
 
