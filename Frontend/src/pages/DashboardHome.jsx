@@ -1,825 +1,1497 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ShoppingBag,
   CheckCircle2,
   Clock,
   XCircle,
-  TrendingUp,
-  MoreHorizontal,
-  ArrowUpRight,
-  Calendar,
-  User,
-  Package,
-  Sparkles,
-  Activity,
   Zap,
-  Download,
-  ChevronRight,
+  TrendingUp,
+  FileText,
+  Search,
+  Filter,
+  Package,
+  Calendar,
+  MonitorPlay,
+  Image as ImageIcon,
+  X,
+  Lightbulb,
+  ChevronDown,
+  CreditCard,
   ArrowRight,
+  Wallet,
+  User,
+  Phone,
+  Mail,
+  Briefcase,
+  Copy,
+  Loader2,
+  Crown,
 } from "lucide-react";
 import { getAuth } from "firebase/auth";
 import {
-  getFirestore,
   collection,
-  addDoc,
   query,
   where,
   onSnapshot,
   serverTimestamp,
+  addDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import CreateOrderModal from "../components/CreateOrderModal";
 
-// --- PIE CHART ---
-const SimplePieChart = ({ segments }) => {
-  let currentAngle = 0;
-  const gradientParts = segments.map((seg) => {
-    const start = currentAngle;
-    const end = currentAngle + seg.percent;
-    currentAngle = end;
-    return `${seg.color} ${start}% ${end}%`;
-  });
+// --- 1. UTILITIES ---
+const checkSubscriptionStatus = (createdAt, duration) => {
+  if (!createdAt || !duration)
+    return { isActive: true, label: "Lifetime", expiryDate: null };
+  const start = new Date(createdAt);
+  let expiry = new Date(start);
+  let hasDuration = false;
+  const d = duration.toLowerCase();
+  if (d.includes("year")) {
+    expiry.setFullYear(start.getFullYear() + 1);
+    hasDuration = true;
+  } else if (d.includes("month") || d.includes("6")) {
+    expiry.setMonth(start.getMonth() + 1);
+    hasDuration = true;
+  }
 
-  const background =
-    segments.length && segments.some((s) => s.percent > 0)
-      ? `conic-gradient(${gradientParts.join(", ")})`
-      : "conic-gradient(#f1f5f9 0% 100%)";
+  if (!hasDuration)
+    return { isActive: true, label: "Lifetime", expiryDate: null };
+  const now = new Date();
+  const isActive = now < expiry;
+  return {
+    isActive,
+    label: isActive ? "Active" : "Expired",
+    expiryDate: expiry,
+  };
+};
 
-  const completedSeg = segments.find((s) => s.label === "Delivered");
-  const successRate = completedSeg ? completedSeg.percent : 0;
+const getStatusConfig = (status) => {
+  const s = (status || "").toLowerCase();
+  if (s.includes("completed") || s.includes("delivered"))
+    return {
+      icon: CheckCircle2,
+      text: "text-emerald-700",
+      bg: "bg-emerald-50",
+      border: "border-emerald-200",
+      label: "Completed",
+    };
+  if (s.includes("pending") || s.includes("approval"))
+    return {
+      icon: Lightbulb,
+      text: "text-amber-700",
+      bg: "bg-amber-50",
+      border: "border-amber-200",
+      label: "Pending",
+    };
+  if (s.includes("progress") || s.includes("processing"))
+    return {
+      icon: Zap,
+      text: "text-blue-700",
+      bg: "bg-blue-50",
+      border: "border-blue-200",
+      label: "In Progress",
+    };
+  if (s.includes("cancel") || s.includes("reject"))
+    return {
+      icon: XCircle,
+      text: "text-red-700",
+      bg: "bg-red-50",
+      border: "border-red-200",
+      label: "Cancelled",
+    };
+  return {
+    icon: Clock,
+    text: "text-slate-700",
+    bg: "bg-slate-50",
+    border: "border-slate-200",
+    label: status,
+  };
+};
 
-  return (
-    <div className="flex flex-col sm:flex-row items-center justify-center gap-8 h-full">
-      <div
-        className="relative w-48 h-48 rounded-full shrink-0 p-4 bg-slate-50 shadow-inner"
-        style={{ background }}
-      >
-        <div className="absolute inset-3 bg-white rounded-full flex items-center justify-center flex-col shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]">
-          <span className="text-3xl font-bold text-slate-900">
-            {successRate}%
-          </span>
-          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
-            Success Rate
-          </span>
-        </div>
+// --- 2. COMPONENTS ---
+
+const SalesTrendChart = ({ data }) => {
+  if (!data || data.length === 0)
+    return (
+      <div className="h-48 flex items-center justify-center text-slate-400 text-xs font-medium bg-slate-50/50 rounded-2xl border border-slate-100">
+        No sales data
       </div>
-      <div className="flex flex-col gap-3 w-full sm:w-auto">
-        {segments.map((seg) => (
-          <div
-            key={seg.label}
-            className="flex items-center gap-3 group cursor-default"
+    );
+  const maxValue = Math.max(...data.map((d) => d.value), 1);
+  const points = data
+    .map((d, i) => {
+      const x = (i / (data.length - 1)) * 100;
+      const y = 100 - (d.value / maxValue) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const areaPath = `M0,100 ${points
+    .split(" ")
+    .map((p) => `L${p}`)
+    .join(" ")} L100,100 Z`;
+  return (
+    <div className="relative h-48 w-full mt-4 select-none group">
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="w-full h-full overflow-visible"
+      >
+        <defs>
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f7650b" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#f7650b" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#chartGradient)" />
+        <polyline
+          fill="none"
+          stroke="#f7650b"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={points}
+        />
+        {data.map((d, i) => (
+          <circle
+            key={i}
+            cx={(i / (data.length - 1)) * 100}
+            cy={100 - (d.value / maxValue) * 100}
+            r="2"
+            fill="#fff"
+            stroke="#f7650b"
+            strokeWidth="1.5"
+            className="opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          />
+        ))}
+      </svg>
+      <div className="flex justify-between mt-2 px-1 border-t border-slate-100 pt-2">
+        {data.map((d, i) => (
+          <span
+            key={i}
+            className="text-[9px] font-bold text-slate-400 uppercase tracking-wider"
           >
-            <span
-              className="w-3 h-3 rounded-full shadow-sm ring-2 ring-white"
-              style={{ backgroundColor: seg.color }}
-            />
-            <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition-colors flex-1">
-              {seg.label}
-            </span>
-            <span className="text-xs font-bold bg-slate-100 px-2 py-0.5 rounded-md text-slate-600">
-              {seg.percent}%
-            </span>
-          </div>
+            {d.label}
+          </span>
         ))}
       </div>
     </div>
   );
 };
 
-// --- BAR CHART ---
-const SimpleBarChart = ({ data }) => {
-  const maxVal = Math.max(...data.values, 1);
+const PackageCountCard = ({ title, count, type, onClick }) => (
+  <motion.div
+    whileHover={{ scale: 1.02, y: -2 }}
+    whileTap={{ scale: 0.98 }}
+    onClick={onClick}
+    className="cursor-pointer group p-3 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between hover:border-orange-200 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-300"
+  >
+    <div className="flex items-center gap-3">
+      <div
+        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-sm ${
+          type === "video"
+            ? "bg-purple-50 text-purple-500 group-hover:bg-purple-500 group-hover:text-white"
+            : "bg-blue-50 text-blue-500 group-hover:bg-blue-500 group-hover:text-white"
+        }`}
+      >
+        {type === "video" ? <MonitorPlay size={18} /> : <ImageIcon size={18} />}
+      </div>
+      <div>
+        <h4 className="text-xs font-bold text-slate-700 group-hover:text-slate-900 uppercase tracking-wider transition-colors">
+          {title}
+        </h4>
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          <p className="text-[9px] font-medium text-slate-400 group-hover:text-[#f7650b]">
+            View details
+          </p>
+        </div>
+      </div>
+    </div>
+    <div className="text-xl font-black text-slate-800 group-hover:text-[#f7650b] transition-colors">
+      {count}
+    </div>
+  </motion.div>
+);
+
+// --- MODALS ---
+
+const OrderDetailsModal = ({ isOpen, onClose, order }) => {
+  const [copied, setCopied] = useState("");
+  if (!order) return null;
+  const copyToClipboard = (text, label) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(""), 2000);
+  };
+  const statusConfig = getStatusConfig(order.status);
+  const StatusIcon = statusConfig.icon;
+  const isCompleted = order.status.toLowerCase().includes("completed");
 
   return (
-    <div className="h-64 flex items-end justify-between gap-2 sm:gap-3 pt-8 w-full px-2">
-      {data.values.map((val, i) => {
-        const heightPercent = (val / maxVal) * 100;
-        return (
-          <div
-            key={i}
-            className="group flex flex-col items-center gap-3 w-full h-full justify-end relative"
-          >
-            <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-xl z-20 whitespace-nowrap">
-              {val} Orders
-              <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
-            </div>
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100]"
+            onClick={onClose}
+          />
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 pointer-events-none">
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: `${heightPercent}%`, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                delay: i * 0.05,
-                type: "spring",
-                stiffness: 100,
-              }}
-              className="w-full max-w-[40px] rounded-t-xl relative overflow-hidden bg-slate-100"
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-[2rem] shadow-2xl overflow-hidden pointer-events-auto flex flex-col max-h-[85vh] sm:max-h-[90vh]"
             >
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                      Order Details
+                    </h2>
+                    <div
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase flex items-center gap-1 ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
+                    >
+                      <StatusIcon size={10} /> {statusConfig.label}
+                    </div>
+                  </div>
+                  <p
+                    className="text-xs text-slate-400 mt-1 font-mono cursor-pointer"
+                    onClick={() => copyToClipboard(order.displayId, "ID")}
+                  >
+                    {order.displayId}{" "}
+                    {copied === "ID" && (
+                      <span className="text-emerald-500 font-bold ml-2">
+                        Copied!
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100"
+                >
+                  <X size={18} />
+                </button>
+              </div>
               <div
-                className={`absolute inset-0 bg-gradient-to-t transition-colors duration-300
-                  ${
-                    val > 0
-                      ? "from-[#f7650b] to-orange-400"
-                      : "from-slate-200 to-slate-100"
-                  }
-                `}
-              />
+                className="p-5 overflow-y-auto custom-scrollbar space-y-6"
+                data-lenis-prevent
+              >
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <div className="flex items-center gap-2 mb-4">
+                    <User className="w-4 h-4 text-slate-500" />
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                      Client Profile
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-4 mb-4">
+                    <img
+                      src={order.avatar}
+                      alt=""
+                      className="w-12 h-12 rounded-full border-2 border-white shadow-sm"
+                    />
+                    <div>
+                      <h4 className="text-lg font-bold text-slate-900">
+                        {order.client?.name}
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Registered Client
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between group">
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <Mail size={14} />{" "}
+                        <span className="text-xs font-medium truncate max-w-[150px]">
+                          {order.client?.email || "N/A"}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() =>
+                          copyToClipboard(order.client?.email, "Email")
+                        }
+                      >
+                        <Copy size={12} className="text-slate-400" />
+                      </button>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between group">
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <Phone size={14} />{" "}
+                        <span className="text-xs font-medium">
+                          {order.client?.phone || "N/A"}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() =>
+                          copyToClipboard(order.client?.phone, "Phone")
+                        }
+                      >
+                        <Copy size={12} className="text-slate-400" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Briefcase className="w-4 h-4 text-purple-500" />
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        Project
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">Service</span>
+                        <span className="text-xs font-bold text-slate-900">
+                          {order.service?.name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">Plan</span>
+                        <span className="text-xs font-bold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-md border border-orange-100">
+                          {order.planLabel || "Standard"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">Duration</span>
+                        <span className="text-xs font-bold text-slate-900">
+                          {order.Duration}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calendar className="w-4 h-4 text-blue-500" />
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        Timeline
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">Created</span>
+                        <span className="text-xs font-bold text-slate-900">
+                          {order.dateFormatted}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">Time</span>
+                        <span className="text-xs font-bold text-slate-900">
+                          {order.timeFormatted}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-50">
+                        <span className="text-xs text-slate-500">
+                          Completed
+                        </span>
+                        <span
+                          className={`text-xs font-bold ${
+                            isCompleted
+                              ? "text-emerald-600"
+                              : "text-slate-400 italic"
+                          }`}
+                        >
+                          {isCompleted ? order.dateFormatted : "Pending"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Buy Price
+                    </p>
+                    <p className="text-lg font-black text-slate-900">
+                      ₹{order.pricing?.priceToAdmin}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Sell Price
+                    </p>
+                    <p className="text-lg font-black text-emerald-600">
+                      ₹{order.pricing?.priceFromClient}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Profit
+                    </p>
+                    <p
+                      className={`text-lg font-black ${
+                        order.pricing?.profit >= 0
+                          ? "text-emerald-500"
+                          : "text-red-500"
+                      }`}
+                    >
+                      {order.pricing?.profit >= 0 ? "+" : ""}₹
+                      {order.pricing?.profit}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Status
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <p
+                        className={`text-lg font-black ${
+                          order.payment?.due <= 0
+                            ? "text-emerald-600"
+                            : "text-red-500"
+                        }`}
+                      >
+                        {order.payment?.due <= 0
+                          ? "Paid"
+                          : `Due: ₹${order.payment?.due}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[#f7650b] transition-colors">
-              {data.labels[i]}
-            </span>
           </div>
-        );
-      })}
-    </div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
+const MemberDetailsModal = ({ isOpen, onClose, title, members }) => (
+  <AnimatePresence>
+    {isOpen && (
+      <>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100]"
+          onClick={onClose}
+        />
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 pointer-events-none">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh] pointer-events-auto"
+          >
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900">{title}</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Subscription Status
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors text-slate-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div
+              className="overflow-y-auto p-4 custom-scrollbar"
+              data-lenis-prevent
+            >
+              {members.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 font-bold text-sm">
+                  No members found.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {members.map((m, i) => {
+                    const status = checkSubscriptionStatus(
+                      m.createdAtDate,
+                      m.Duration
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center justify-between p-4 rounded-2xl border bg-white transition-all ${
+                          status.isActive
+                            ? "border-slate-100 hover:border-orange-100"
+                            : "border-red-100 bg-red-50/10"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={m.avatar}
+                            alt=""
+                            className={`w-10 h-10 rounded-full object-cover ${
+                              !status.isActive && "grayscale opacity-70"
+                            }`}
+                          />
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm">
+                              {m.client?.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded w-fit mt-1">
+                              {m.displayId}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 ${
+                              status.isActive
+                                ? "text-green-600 bg-green-50 border-green-100"
+                                : "text-red-600 bg-red-50 border-red-100"
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                status.isActive ? "bg-green-500" : "bg-red-500"
+                              }`}
+                            ></span>{" "}
+                            {status.label}
+                          </div>
+                          <div className="text-[9px] text-slate-400 mt-1 font-medium">
+                            {status.expiryDate
+                              ? status.isActive
+                                ? `Expires: ${status.expiryDate.toLocaleDateString()}`
+                                : `Expired: ${status.expiryDate.toLocaleDateString()}`
+                              : `Joined: ${m.dateFormatted}`}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </>
+    )}
+  </AnimatePresence>
+);
+
+const PaymentUpdateModal = ({ isOpen, onClose, order }) => {
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  if (!order) return null;
+  const totalBuyPrice = parseFloat(order.pricing?.priceToAdmin || 0);
+  const paidAlready = parseFloat(order.payment?.paid || 0);
+  const due = totalBuyPrice - paidAlready;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        setAmount("");
+        onClose();
+      }, 2000);
+    }, 1500);
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[120]"
+            onClick={onClose}
+          />
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 pointer-events-none">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden pointer-events-auto"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900">
+                    Update Payment
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Order:{" "}
+                    <span className="font-mono text-slate-700">
+                      {order.displayId}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6">
+                {submitted ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                      <CheckCircle2 size={32} />
+                    </div>
+                    <h4 className="text-xl font-bold text-slate-900">
+                      Submitted!
+                    </h4>
+                    <p className="text-sm text-slate-500 mt-2">
+                      Payment sent for Verification.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mb-6">
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase">
+                          Total
+                        </div>
+                        <div className="text-sm font-black text-slate-800">
+                          ₹{totalBuyPrice}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded-xl border border-green-100 text-center">
+                        <div className="text-[10px] text-green-600 font-bold uppercase">
+                          Paid
+                        </div>
+                        <div className="text-sm font-black text-green-700">
+                          ₹{paidAlready}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-center">
+                        <div className="text-[10px] text-red-600 font-bold uppercase">
+                          Due
+                        </div>
+                        <div className="text-sm font-black text-red-700">
+                          ₹{due}
+                        </div>
+                      </div>
+                    </div>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Amount
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            max={due}
+                            className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-[#f7650b]"
+                            placeholder="0.00"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={loading || due <= 0}
+                        className="w-full py-3.5 rounded-xl bg-[#f7650b] text-white font-bold text-sm shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {loading ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          "Submit Payment"
+                        )}
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// --- MAIN DASHBOARD ---
 const DashboardHome = () => {
   const auth = getAuth();
   const user = auth.currentUser;
   const navigate = useNavigate();
   const agencyName = user?.displayName || "Partner";
 
-  const [performanceView, setPerformanceView] = useState("Weekly");
-  const [greeting, setGreeting] = useState("Good Morning");
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
-
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [memberModal, setMemberModal] = useState({
+    isOpen: false,
+    title: "",
+    members: [],
+  });
+  const [paymentModal, setPaymentModal] = useState({
+    isOpen: false,
+    order: null,
+  });
+  const [detailsModal, setDetailsModal] = useState({
+    isOpen: false,
+    order: null,
+  });
 
-  // --- GREETING ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [reportType, setReportType] = useState("Monthly");
+
+  const [time, setTime] = useState(new Date());
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting("Good Morning");
-    else if (hour < 18) setGreeting("Good Afternoon");
-    else setGreeting("Good Evening");
+    const t = setInterval(() => setTime(new Date()), 60000);
+    return () => clearInterval(t);
   }, []);
 
-  // --- FETCH ORDERS (Fixed: Sorting Client Side to Avoid Index Issue) ---
+  const greeting = useMemo(() => {
+    const hour = time.getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  }, [time]);
+
   useEffect(() => {
     if (!user) return;
-
-    // FIX: Removed 'orderBy' from query to prevent "Missing Index" error
     const q = query(
       collection(db, "orders"),
       where("partnerId", "==", user.uid)
     );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedOrders = snapshot.docs.map((doc) => {
-          const d = doc.data();
-          // Robust Date Parsing
-          let dateObj = new Date();
-          if (d.createdAt?.toDate) {
-            dateObj = d.createdAt.toDate();
-          } else if (d.createdAt) {
-            dateObj = new Date(d.createdAt);
-          }
-
-          return {
-            id: doc.id,
-            ...d,
-            createdAtDate: dateObj,
-            dateFormatted: dateObj.toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          };
-        });
-
-        // Sort manually in JS (Newest first)
-        fetchedOrders.sort((a, b) => b.createdAtDate - a.createdAtDate);
-
-        setOrders(fetchedOrders);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching orders:", error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((doc) => {
+        const d = doc.data();
+        const dateObj = d.createdAt?.toDate
+          ? d.createdAt.toDate()
+          : new Date(d.createdAt || Date.now());
+        const buyPrice = parseFloat(d.pricing?.priceToAdmin || 0);
+        const paidAmount = parseFloat(d.paidAmount || 0);
+        const dueAmount = Math.max(0, buyPrice - paidAmount);
+        return {
+          id: doc.id,
+          ...d,
+          createdAtDate: dateObj,
+          dateFormatted: dateObj.toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "2-digit",
+          }),
+          timeFormatted: dateObj.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          payment: {
+            total: buyPrice,
+            paid: paidAmount,
+            due: dueAmount,
+            status:
+              dueAmount <= 0 ? "Paid" : paidAmount > 0 ? "Partial" : "Due",
+          },
+        };
+      });
+      list.sort((a, b) => b.createdAtDate - a.createdAtDate);
+      setOrders(list);
+      setLoading(false);
+    });
+    return () => unsub();
   }, [user]);
 
-  // --- CALCULATE STATS (Live Dashboard Logic) ---
-  const { statsData, chartData } = useMemo(() => {
-    const now = new Date();
-    const today = now.toDateString();
+  const {
+    overallStats,
+    timeBasedStats,
+    filteredTableOrders,
+    packageData,
+    financialStats,
+  } = useMemo(() => {
+    let totalRev = 0,
+      completed = 0,
+      inProgress = 0,
+      inWaiting = 0,
+      cancelled = 0;
+    let totalLifetimePaid = 0,
+      totalLifetimeDue = 0;
+    const pkgLists = {
+      yearlyVideo: [],
+      yearlyImage: [],
+      monthlyVideo: [],
+      monthlyImage: [],
+    };
 
-    let totalRev = 0;
-    let completed = 0;
-    let inProgress = 0;
-    let cancelled = 0;
+    orders.forEach((o) => {
+      const val = parseFloat(
+        o.pricing?.priceFromClient || o.amount?.replace(/[^0-9.]/g, "") || 0
+      );
+      const status = (o.status || "").toLowerCase();
 
-    let revToday = 0;
-    let completedToday = 0;
-    let inProgressToday = 0;
-    let cancelledToday = 0;
-
-    const weeklyDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
-
-    const monthlyWeeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
-    const monthlyCounts = [0, 0, 0, 0];
-
-    orders.forEach((order) => {
-      // 1. Get Amount
-      let amt = 0;
-      if (order.pricing && order.pricing.priceFromClient) {
-        amt = Number(order.pricing.priceFromClient);
-      } else if (order.amount) {
-        amt = parseFloat(order.amount.toString().replace(/[₹,]/g, "")) || 0;
-      }
-
-      const orderDate = order.createdAtDate || new Date();
-      const isToday = orderDate.toDateString() === today;
-
-      // 2. Status Logic (Robust & Case Insensitive)
-      const statusRaw = (order.status || "Pending").toLowerCase();
-      let statusType = "in_progress";
-
-      if (statusRaw.includes("delivered") || statusRaw.includes("completed")) {
-        statusType = "completed";
-      } else if (statusRaw.includes("cancel") || statusRaw.includes("reject")) {
-        statusType = "cancelled";
-      } else {
-        // Includes "pending", "processing", "in_progress", "approval", etc.
-        statusType = "in_progress";
-      }
-
-      // 3. Aggregation
-      if (statusType === "completed") {
+      if (status.includes("delivered") || status.includes("completed")) {
         completed++;
-        if (isToday) completedToday++;
-      } else if (statusType === "in_progress") {
-        inProgress++;
-        if (isToday) inProgressToday++;
-      } else if (statusType === "cancelled") {
+        totalRev += val;
+      } else if (status.includes("cancel") || status.includes("reject")) {
         cancelled++;
-        if (isToday) cancelledToday++;
+      } else if (status.includes("progress")) {
+        inProgress++;
+      } else {
+        inWaiting++;
       }
 
-      // Add to Revenue if NOT cancelled
-      if (statusType !== "cancelled") {
-        totalRev += amt;
-        if (isToday) revToday += amt;
-      }
+      totalLifetimePaid += o.payment.paid;
+      totalLifetimeDue += o.payment.due;
 
-      // 4. Charts (Weekly)
-      const timeDiff = now.getTime() - orderDate.getTime();
-      const daysDiff = timeDiff / (1000 * 3600 * 24);
-      if (daysDiff < 7 && daysDiff >= 0) {
-        weeklyCounts[orderDate.getDay()]++;
-      }
+      if (!status.includes("cancel") && !status.includes("reject")) {
+        const sName = (o.service?.name || o.service || "").toLowerCase();
+        const dur = (o.Duration || "").toLowerCase();
+        const isVideo = sName.includes("video") || sName.includes("reel");
+        const isImage = sName.includes("poster") || sName.includes("design");
+        const isYearly = dur.includes("year");
+        const isMonthly = dur.includes("month") || dur.includes("6");
 
-      // 5. Charts (Monthly)
-      if (
-        orderDate.getMonth() === now.getMonth() &&
-        orderDate.getFullYear() === now.getFullYear()
-      ) {
-        const date = orderDate.getDate();
-        if (date <= 7) monthlyCounts[0]++;
-        else if (date <= 14) monthlyCounts[1]++;
-        else if (date <= 21) monthlyCounts[2]++;
-        else monthlyCounts[3]++;
+        if (isYearly && isVideo) pkgLists.yearlyVideo.push(o);
+        else if (isYearly && isImage) pkgLists.yearlyImage.push(o);
+        else if (isMonthly && isVideo) pkgLists.monthlyVideo.push(o);
+        else if (isMonthly && isImage) pkgLists.monthlyImage.push(o);
       }
     });
 
-    const total = orders.length || 1;
-    const pieSegments = [
-      {
-        color: "#22c55e",
-        percent: Math.round((completed / total) * 100),
-        label: "Delivered",
-      },
-      {
-        color: "#f97316",
-        percent: Math.round((inProgress / total) * 100),
-        label: "Pending",
-      },
-      {
-        color: "#ef4444",
-        percent: Math.round((cancelled / total) * 100),
-        label: "Cancelled",
-      },
-    ];
+    const now = new Date();
+    const cutoff = new Date();
+    if (reportType === "Weekly") cutoff.setDate(now.getDate() - 7);
+    else cutoff.setMonth(now.getMonth() - 1);
+    const timeFiltered = orders.filter((o) => o.createdAtDate >= cutoff);
+    const chartMap = new Map();
+    if (reportType === "Weekly") {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        chartMap.set(d.toLocaleDateString("en-IN", { weekday: "short" }), 0);
+      }
+    } else {
+      ["Wk 1", "Wk 2", "Wk 3", "Wk 4"].forEach((k) => chartMap.set(k, 0));
+    }
+    const serviceCounts = {};
+    timeFiltered.forEach((o) => {
+      const val = parseFloat(
+        o.pricing?.priceFromClient || o.amount?.replace(/[^0-9.]/g, "") || 0
+      );
+      serviceCounts[o.service?.name || "Unknown"] =
+        (serviceCounts[o.service?.name || "Unknown"] || 0) + 1;
+      if (reportType === "Weekly") {
+        const label = o.createdAtDate.toLocaleDateString("en-IN", {
+          weekday: "short",
+        });
+        if (chartMap.has(label)) chartMap.set(label, chartMap.get(label) + val);
+      } else {
+        const diff = Math.floor(
+          (now - o.createdAtDate) / (1000 * 60 * 60 * 24)
+        );
+        let wLabel = "Wk 4";
+        if (diff > 21) wLabel = "Wk 1";
+        else if (diff > 14) wLabel = "Wk 2";
+        else if (diff > 7) wLabel = "Wk 3";
+        if (chartMap.has(wLabel))
+          chartMap.set(wLabel, chartMap.get(wLabel) + val);
+      }
+    });
+
+    const tableData = orders.filter((o) => {
+      const search = searchTerm.toLowerCase();
+      const matchesSearch =
+        (o.client?.name || "").toLowerCase().includes(search) ||
+        (o.displayId || "").toLowerCase().includes(search);
+      let matchesStatus = true;
+      if (statusFilter !== "All") {
+        const s = (o.status || "").toLowerCase();
+        const f = statusFilter.toLowerCase();
+        if (f === "pending")
+          matchesStatus = s.includes("pending") || s.includes("approval");
+        else if (f === "completed")
+          matchesStatus = s.includes("completed") || s.includes("delivered");
+        else if (f === "progress") matchesStatus = s.includes("progress");
+        else if (f === "cancelled") matchesStatus = s.includes("cancel");
+      }
+      return matchesSearch && matchesStatus;
+    });
 
     return {
-      statsData: {
-        revenue: `₹${(totalRev / 1000).toFixed(1)}k`,
+      overallStats: {
+        revenue: totalRev,
         completed,
+        inWaiting,
         inProgress,
         cancelled,
-        pieSegments,
-        revToday: `+₹${revToday}`,
-        completedToday: `+${completedToday}`,
-        inProgressToday: `${inProgressToday} new`,
-        cancelledToday: `${cancelledToday}`,
       },
-      chartData: {
-        Weekly: { values: weeklyCounts, labels: weeklyDays },
-        Monthly: { values: monthlyCounts, labels: monthlyWeeks },
+      financialStats: {
+        totalPaid: totalLifetimePaid,
+        totalDue: totalLifetimeDue,
       },
+      timeBasedStats: {
+        chart: Array.from(chartMap, ([label, value]) => ({ label, value })),
+        hotSelling: Object.entries(serviceCounts)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count),
+      },
+      filteredTableOrders: tableData,
+      packageData: pkgLists,
     };
-  }, [orders]);
+  }, [orders, reportType, searchTerm, statusFilter]);
 
-  // --- HANDLE CREATE ORDER (Saves Full Data) ---
-  const handleCreateOrder = async (orderPayload) => {
-    if (!user) return;
-
+  const handleCreateOrder = async (payload) => {
     try {
-      // Spread orderPayload to get ALL fields (client object, brief, pricing object, etc.)
-      const fullOrderData = {
-        ...orderPayload,
-
+      const data = {
+        ...payload,
         partnerId: user.uid,
         partnerName: agencyName,
         partnerEmail: user.email,
-
         displayId: `#ORD-${Math.floor(10000 + Math.random() * 90000)}`,
         createdAt: serverTimestamp(),
-        status: orderPayload.status || "PENDING_APPROVAL_FROM_ADMIN",
-
-        // Helper fields for simple access if needed
-        amount: `₹${orderPayload.pricing?.priceFromClient || 0}`,
-        avatar: `https://ui-avatars.com/api/?name=${
-          orderPayload.client?.name || "Client"
-        }&background=random&color=fff`,
+        status: payload.status || "PENDING_APPROVAL_FROM_ADMIN",
+        amount: `₹${payload.pricing?.priceFromClient}`,
+        buyAmount: `₹${payload.pricing?.priceToAdmin}`,
+        paidAmount: 0,
+        avatar: `https://ui-avatars.com/api/?name=${payload.client?.name}&background=random&color=fff`,
       };
-
-      await addDoc(collection(db, "orders"), fullOrderData);
+      await addDoc(collection(db, "orders"), data);
       setIsOrderModalOpen(false);
-    } catch (error) {
-      console.error("Error adding document: ", error);
-      alert("Failed to place order. Check console for details.");
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  // --- UI STATS ARRAY ---
   const statsUI = [
     {
-      id: 1,
-      title: "Total Revenue",
-      value: statsData.revenue,
-      sub: `Total Orders: ${orders.length}`,
-      icon: Sparkles,
-      color: "from-blue-500 to-indigo-600",
+      title: "Revenue",
+      value: `₹${overallStats.revenue.toLocaleString()}`,
+      sub: "Total",
+      icon: TrendingUp,
+      color: "text-blue-600",
       bg: "bg-blue-50",
-      trend: statsData.revToday,
-      positive: true,
-      trendLabel: "Today",
     },
     {
-      id: 2,
       title: "Completed",
-      value: statsData.completed,
-      sub: "Orders Delivered",
+      value: overallStats.completed,
+      sub: "Delivered",
       icon: CheckCircle2,
-      color: "from-green-500 to-emerald-600",
-      bg: "bg-green-50",
-      trend: statsData.completedToday,
-      positive: true,
-      trendLabel: "Today",
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
     },
     {
-      id: 3,
-      title: "In Progress",
-      value: statsData.inProgress,
-      sub: "Active Projects",
-      icon: Clock,
-      color: "from-orange-500 to-amber-600",
-      bg: "bg-orange-50",
-      trend: statsData.inProgressToday,
-      positive: true,
-      trendLabel: "Today",
+      title: "Pending",
+      value: overallStats.inWaiting,
+      sub: "Waiting",
+      icon: Lightbulb,
+      color: "text-amber-600",
+      bg: "bg-amber-50",
     },
     {
-      id: 4,
+      title: "Processing",
+      value: overallStats.inProgress,
+      sub: "Active",
+      icon: Zap,
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
+    },
+    {
       title: "Cancelled",
-      value: statsData.cancelled,
-      sub: "Refunded / Void",
+      value: overallStats.cancelled,
+      sub: "Void",
       icon: XCircle,
-      color: "from-red-500 to-rose-600",
+      color: "text-red-600",
       bg: "bg-red-50",
-      trend: statsData.cancelledToday,
-      positive: false,
-      trendLabel: "Today",
     },
   ];
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] font-sans relative overflow-x-hidden pb-24">
-      {/* --- BACKGROUND --- */}
-      <div className="fixed inset-0 w-full h-full pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-white via-slate-50 to-transparent" />
-        <motion.div
-          animate={{ x: [0, 50, 0], y: [0, 30, 0], rotate: [0, 5, 0] }}
-          transition={{ duration: 20, repeat: Infinity }}
-          className="absolute -top-20 -right-20 w-[600px] h-[600px] bg-blue-100/40 rounded-full blur-[100px]"
-        />
-        <motion.div
-          animate={{ x: [0, -30, 0], y: [0, 50, 0] }}
-          transition={{ duration: 25, repeat: Infinity }}
-          className="absolute top-40 -left-20 w-[500px] h-[500px] bg-orange-100/40 rounded-full blur-[100px]"
-        />
+    <main className="min-h-screen bg-[#f8fafc] font-sans pb-10 overflow-x-hidden">
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-orange-100/30 rounded-full blur-[120px] translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-100/30 rounded-full blur-[100px] -translate-x-1/2 translate-y-1/2" />
       </div>
 
-      <div className="relative z-10 max-w-[1400px] mx-auto px-4 md:px-8 pt-6">
-        {/* --- 1. HERO & WELCOME --- */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-12">
+      <div className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 pt-6 sm:pt-8">
+        {/* HEADER */}
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
           <div>
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 text-sm font-bold text-slate-400 uppercase tracking-widest mb-2"
-            >
-              <span className="w-2 h-2 rounded-full bg-[#f7650b] animate-pulse"></span>
-              Live Dashboard
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="text-4xl md:text-5xl font-bold text-slate-900 leading-tight"
-            >
-              {greeting},{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#f7650b] to-orange-600">
-                {agencyName.split(" ")[0]}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-widest shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>{" "}
+                Live Dashboard
               </span>
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="text-slate-500 mt-2 text-lg"
-            >
-              You have{" "}
-              <span className="font-bold text-slate-900">
-                {statsData.inProgress} pending tasks
-              </span>{" "}
-              requiring your attention today.
-            </motion.p>
+              <span className="text-xs font-mono font-medium text-slate-400">
+                {time.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+              {greeting},{" "}
+              <span className="text-[#f7650b]">{agencyName.split(" ")[0]}</span>
+            </h1>
+            <p className="text-slate-500 font-medium mt-1 text-sm sm:text-base">
+              Glad to have you—your growth starts here.
+            </p>
           </div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 }}
-            className="flex items-center gap-3 p-1.5 bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100/60 backdrop-blur-xl"
-          >
-            <button className="px-5 py-3 rounded-xl font-bold text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all flex items-center gap-2">
-              <Download className="w-4 h-4" /> Report
-            </button>
-            <div className="w-px h-8 bg-slate-200 mx-1"></div>
-            <button
-              onClick={() => setIsOrderModalOpen(true)}
-              className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-[#f7650b] transition-all shadow-lg hover:shadow-orange-500/25 flex items-center gap-2"
-            >
-              <Zap className="w-4 h-4 fill-current" /> Create Order
-            </button>
-          </motion.div>
-        </div>
-
-        {/* --- 2. STATS BENTO GRID --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {statsUI.map((stat, index) => (
-            <motion.div
-              key={stat.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + index * 0.1 }}
-              whileHover={{ y: -5 }}
-              className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden group cursor-default"
-            >
-              <div
-                className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-10 rounded-full blur-2xl transition-opacity duration-500`}
-              />
-              <div className="flex justify-between items-start mb-8">
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br ${stat.color} text-white shadow-lg`}
-                >
-                  <stat.icon className="w-6 h-6" />
-                </div>
-
-                <div
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                    stat.positive
-                      ? "bg-green-50 text-green-600"
-                      : "bg-slate-100 text-slate-500"
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="bg-white p-1 rounded-xl border border-slate-200 flex shadow-sm">
+              {["Weekly", "Monthly"].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setReportType(t)}
+                  className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                    reportType === t
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  {stat.trend}
-                  <span className="text-[9px] opacity-70 ml-1 font-normal">
-                    {stat.trendLabel}
-                  </span>
+                  {t}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setIsOrderModalOpen(true)}
+              className="px-5 py-2.5 rounded-xl bg-[#f7650b] text-white font-bold text-xs shadow-lg shadow-orange-500/30 hover:bg-orange-600 transition-all flex items-center justify-center gap-2"
+            >
+              <Zap size={16} /> New Order
+            </button>
+          </div>
+        </div>
+
+        {/* STATS CARDS */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 mb-6">
+          {statsUI.map((stat, i) => (
+            <div
+              key={i}
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div
+                  className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center`}
+                >
+                  <stat.icon size={18} className="sm:w-5 sm:h-5" />
                 </div>
-              </div>
-              <div>
-                <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">
-                  {stat.title}
-                </h3>
-                <div className="text-3xl font-bold text-slate-900">
-                  {stat.value}
-                </div>
-                <p className="text-slate-400 text-xs mt-2 font-medium">
+                <span
+                  className={`text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded-lg ${stat.bg} ${stat.color} uppercase tracking-wider`}
+                >
                   {stat.sub}
-                </p>
+                </span>
               </div>
-            </motion.div>
+              <div className="text-xl sm:text-2xl font-black text-slate-800">
+                {stat.value}
+              </div>
+              <div className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1">
+                {stat.title}
+              </div>
+            </div>
           ))}
         </div>
 
-        {/* --- 3. MAIN CONTENT GRID --- */}
-        <div className="grid lg:grid-cols-12 gap-8 mb-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="lg:col-span-8 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-2xl shadow-slate-200/30 relative overflow-hidden"
-          >
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">
-                  Sales Analytics
-                </h3>
-                <p className="text-slate-500 text-sm">Performance overview</p>
-              </div>
-              <div className="flex p-1 bg-slate-50 rounded-xl border border-slate-100">
-                {["Weekly", "Monthly"].map((view) => (
-                  <button
-                    key={view}
-                    onClick={() => setPerformanceView(view)}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                      performanceView === view
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    {view}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <SimpleBarChart data={chartData[performanceView]} />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-2xl shadow-slate-200/30 flex flex-col"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-900">Status</h3>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-50 text-slate-400">
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-grow flex items-center justify-center">
-              <SimplePieChart segments={statsData.pieSegments} />
-            </div>
-            <div className="mt-6 pt-6 border-t border-slate-50">
-              <p className="text-center text-sm text-slate-500">
-                Your delivery rate is calculated based on{" "}
-                <span className="text-green-500 font-bold">Completed</span> vs
-                Total orders.
-              </p>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* --- 4. BOTTOM GRID (ORDERS TABLE) --- */}
-        <div className="grid lg:grid-cols-12 gap-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
-            className="lg:col-span-8 bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-200/30 overflow-hidden flex flex-col"
-          >
-            <div className="p-8 pb-4 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">
-                  Recent Orders
-                </h3>
-                <p className="text-slate-500 text-sm">
-                  Latest transaction history
-                </p>
-              </div>
-              <button className="text-xs font-bold text-[#f7650b] hover:text-orange-700 flex items-center gap-1">
-                View All <ChevronRight className="w-3 h-3" />
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50/50 border-b border-slate-100">
-                  <tr>
-                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Client
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Service
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Amount (Client)
-                    </th>
-                    <th className="px-6 py-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan="5"
-                        className="text-center py-10 text-slate-400"
-                      >
-                        Loading orders...
-                      </td>
-                    </tr>
-                  ) : orders.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan="5"
-                        className="text-center py-10 text-slate-400"
-                      >
-                        No orders found. Click "Create Order" to get started.
-                      </td>
-                    </tr>
-                  ) : (
-                    orders.map((order) => {
-                      // FIX: Safely extract client name if it's an object or string
-                      const displayClient =
-                        typeof order.client === "object" &&
-                        order.client !== null
-                          ? order.client.name || "Client"
-                          : order.client || "Client";
-
-                      // FIX: Safely extract service name if it's an object or string
-                      const displayService =
-                        typeof order.service === "object" &&
-                        order.service !== null
-                          ? order.service.name || "Service"
-                          : order.service || "Service";
-
-                      // FIX: Display Price (Prefer numeric, fall back to string)
-                      const displayPrice =
-                        order.pricing && order.pricing.priceFromClient
-                          ? `₹${order.pricing.priceFromClient}`
-                          : order.amount;
-
-                      // FIX: Status Formatting (Case Insensitive)
-                      const statusRaw = (order.status || "Pending")
-                        .replace(/_/g, " ")
-                        .replace("FROM ADMIN", "")
-                        .toLowerCase();
-
-                      const statusFormatted =
-                        statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
-
-                      return (
-                        <tr
-                          key={order.id}
-                          className="group hover:bg-slate-50/80 transition-colors"
-                        >
-                          <td className="px-8 py-4">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={
-                                  order.avatar ||
-                                  `https://ui-avatars.com/api/?name=${displayClient}&background=random&color=fff`
-                                }
-                                alt={displayClient}
-                                className="w-10 h-10 rounded-xl shadow-sm"
-                              />
-                              <div>
-                                <div className="font-bold text-slate-900 text-sm">
-                                  {displayClient}
-                                </div>
-                                <div className="text-xs text-slate-400 font-medium">
-                                  {order.displayId || order.id?.substring(0, 8)}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                              <Package className="w-4 h-4 text-slate-400" />{" "}
-                              {displayService}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border capitalize
-                                    ${
-                                      statusRaw.includes("delivered") ||
-                                      statusRaw.includes("completed")
-                                        ? "bg-green-50 text-green-600 border-green-100"
-                                        : statusRaw.includes("pending") ||
-                                          statusRaw.includes("processing") ||
-                                          statusRaw.includes("approval")
-                                        ? "bg-orange-50 text-orange-600 border-orange-100"
-                                        : "bg-blue-50 text-blue-600 border-blue-100"
-                                    }
-                                  `}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                              {statusFormatted}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="font-bold text-slate-900">
-                              {displayPrice}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="p-2 rounded-lg text-slate-300 hover:bg-white hover:text-[#f7650b] hover:shadow-md transition-all">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </motion.div>
-
-          {/* PREMIUM PLAN CARD */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            className="lg:col-span-4 group perspective-1000"
-          >
-            <div className="relative h-full bg-slate-900 rounded-[2.5rem] p-8 overflow-hidden text-white flex flex-col shadow-2xl shadow-slate-900/40 transition-transform duration-500 hover:scale-[1.02]">
-              <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] mix-blend-overlay"></div>
-              <div className="absolute -top-24 -right-24 w-80 h-80 bg-gradient-to-br from-[#f7650b] to-purple-600 rounded-full blur-[80px] opacity-40 group-hover:opacity-60 transition-opacity duration-700"></div>
-
-              <div className="relative z-10 flex flex-col h-full">
-                <div className="flex justify-between items-start mb-8">
-                  <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
-                    <Activity className="w-6 h-6 text-[#f7650b]" />
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 mb-12 items-start">
+          {/* LEFT COLUMN: Financials + Table */}
+          <div className="lg:col-span-8 flex flex-col gap-5">
+            {/* 1. FINANCIAL BAR */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Wallet */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2rem] p-5 text-white shadow-lg relative overflow-hidden flex flex-col justify-between h-auto sm:h-40 gap-4 sm:gap-0">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none"></div>
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                    <Wallet className="text-orange-400" size={18} />
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-[#f7650b] text-white text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-orange-900/40">
-                    Pro Plan
-                  </span>
+                  <div>
+                    <h3 className="font-bold leading-none text-sm">
+                      Partner Wallet
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium uppercase tracking-wide">
+                      Lifetime Financials
+                    </p>
+                  </div>
                 </div>
-
-                <div className="mt-auto">
-                  <h3 className="text-3xl font-bold mb-2 tracking-tight">
-                    Supreme Master
-                  </h3>
-                  <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-                    Unlocking full potential with priority support & AI tools.
-                  </p>
-
-                  <div className="mb-6">
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                      <span className="text-slate-400">Storage Used</span>
-                      <span className="text-white">78%</span>
+                <div className="flex gap-4 relative z-10">
+                  <div className="flex-1 p-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-[9px] text-slate-400 font-bold uppercase mb-0.5">
+                      Paid
                     </div>
-                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        whileInView={{ width: "78%" }}
-                        transition={{ duration: 1.5, delay: 1 }}
-                        className="h-full bg-gradient-to-r from-[#f7650b] to-orange-500 rounded-full shadow-[0_0_15px_rgba(247,101,11,0.5)]"
-                      />
+                    <div className="text-lg font-black text-emerald-400">
+                      ₹{financialStats.totalPaid.toLocaleString()}
                     </div>
                   </div>
-
+                  <div className="flex-1 p-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-[9px] text-slate-400 font-bold uppercase mb-0.5">
+                      Due
+                    </div>
+                    <div className="text-lg font-black text-red-400">
+                      ₹{financialStats.totalDue.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Upgrade */}
+              <div className="bg-indigo-600 rounded-[2rem] p-5 text-white shadow-lg relative overflow-hidden flex flex-col justify-between h-auto sm:h-40 gap-4 sm:gap-0">
+                <div className="absolute bottom-0 left-0 w-40 h-40 bg-indigo-500 rounded-full -ml-10 -mb-10 blur-2xl pointer-events-none"></div>
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="p-2 bg-indigo-500 rounded-lg">
+                    <Crown className="text-white" size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold leading-none text-sm">
+                      Upgrade Partner Plan
+                    </h3>
+                    <p className="text-[10px] text-indigo-200 mt-0.5 font-medium">
+                      Unlock lower commissions & tools.
+                    </p>
+                  </div>
+                </div>
+                <div className="relative z-10">
                   <button
                     onClick={() => navigate("/dashboard/plans")}
-                    className="w-full py-4 bg-white text-slate-900 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 shadow-lg"
+                    className="w-full py-2.5 rounded-xl bg-white text-indigo-600 font-bold text-xs hover:bg-indigo-50 shadow-md transition-all flex items-center justify-center gap-2"
                   >
-                    Upgrade Plan <ArrowRight className="w-4 h-4" />
+                    View Upgrade Plans <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
             </div>
-          </motion.div>
+
+            {/* 2. ORDER TABLE */}
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/20 flex flex-col h-[500px] lg:h-[650px] overflow-hidden relative">
+              <div className="p-4 sm:p-5 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-20 flex flex-col sm:flex-row justify-between gap-4">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                    <FileText size={20} className="text-slate-400" /> Order
+                    History
+                  </h3>
+                  <p className="text-xs text-slate-400 font-medium">
+                    Tracking all client orders
+                  </p>
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <div className="relative group flex-1 sm:flex-none">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#f7650b] transition-colors" />
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full sm:w-40 pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-[#f7650b] focus:bg-white transition-all"
+                    />
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="pl-3 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 focus:outline-none focus:border-[#f7650b] appearance-none cursor-pointer focus:bg-white transition-all"
+                    >
+                      <option value="All">All Status</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Progress">In Progress</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Cancelled">Cancelled</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+              <div
+                className="flex-1 overflow-y-auto custom-scrollbar bg-white"
+                data-lenis-prevent
+              >
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-100">
+                    <tr>
+                      <th className="px-4 sm:px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                        Client
+                      </th>
+                      <th className="px-4 sm:px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest hidden sm:table-cell">
+                        Status
+                      </th>
+                      <th className="px-4 sm:px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest hidden md:table-cell">
+                        Admin Payment
+                      </th>
+                      <th className="px-4 sm:px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest text-right">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {loading ? (
+                      <tr>
+                        <td
+                          colSpan="4"
+                          className="text-center py-24 text-slate-400 font-medium"
+                        >
+                          Loading records...
+                        </td>
+                      </tr>
+                    ) : filteredTableOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="text-center py-24">
+                          <div className="flex flex-col items-center opacity-50">
+                            <Search size={32} className="text-slate-300 mb-2" />
+                            <span className="text-slate-400 font-bold text-xs">
+                              No orders found
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTableOrders.map((order) => {
+                        const statusConfig = getStatusConfig(order.status);
+                        const StatusIcon = statusConfig.icon;
+                        const isCompleted =
+                          order.status.toLowerCase().includes("completed") ||
+                          order.status.toLowerCase().includes("delivered");
+                        return (
+                          <tr
+                            key={order.id}
+                            onClick={() =>
+                              setDetailsModal({ isOpen: true, order: order })
+                            }
+                            className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                          >
+                            <td className="px-4 sm:px-6 py-3.5 align-top">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={order.avatar}
+                                  className="w-9 h-9 rounded-full border border-slate-100 shadow-sm bg-white"
+                                  alt=""
+                                />
+                                <div>
+                                  <div className="font-bold text-sm text-slate-900 group-hover:text-[#f7650b] transition-colors">
+                                    {order.client?.name}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-slate-400">
+                                    {order.displayId}
+                                  </div>
+                                  <div className="text-[10px] font-bold text-slate-500 mt-0.5 sm:hidden">
+                                    {order.service?.name}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 sm:px-6 py-3.5 align-top hidden sm:table-cell">
+                              <div
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
+                              >
+                                <StatusIcon size={12} />
+                                {statusConfig.label}
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-1.5 pl-2 font-medium flex items-center gap-1">
+                                {isCompleted ? (
+                                  <>
+                                    <CheckCircle2
+                                      size={10}
+                                      className="text-green-500"
+                                    />{" "}
+                                    Done: {order.dateFormatted}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock size={10} /> Started:{" "}
+                                    {order.dateFormatted}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 sm:px-6 py-3.5 align-top hidden md:table-cell">
+                              <div className="flex flex-col gap-1">
+                                <div className="flex justify-between w-28 text-[10px]">
+                                  <span className="text-slate-500 font-bold">
+                                    Total:
+                                  </span>
+                                  <span className="font-bold text-slate-900">
+                                    ₹{order.payment.total}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between w-28 text-[10px]">
+                                  <span className="text-slate-400">Paid:</span>
+                                  <span className="font-bold text-emerald-600">
+                                    ₹{order.payment.paid}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between w-28 text-[10px]">
+                                  <span className="text-slate-400">Due:</span>
+                                  <span className="font-bold text-red-500">
+                                    ₹{order.payment.due}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 sm:px-6 py-3.5 align-top text-right">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPaymentModal({
+                                    isOpen: true,
+                                    order: order,
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[10px] font-bold hover:bg-[#f7650b] shadow-md transition-all"
+                              >
+                                Pay{" "}
+                                <ArrowRight
+                                  size={10}
+                                  className="hidden sm:block"
+                                />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div
+            className="lg:col-span-4 flex flex-col gap-5 h-auto lg:h-[850px] lg:overflow-y-auto lg:custom-scrollbar"
+            data-lenis-prevent
+          >
+            <div className="bg-white rounded-[2rem] p-5 border border-slate-100 shadow-xl shadow-slate-200/20 shrink-0">
+              <div className="flex justify-between items-center mb-1">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Sales Analysis
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Revenue Trend
+                  </p>
+                </div>
+                <span className="text-[9px] font-bold bg-slate-900 text-white px-2 py-1 rounded-full uppercase tracking-wider">
+                  {reportType}
+                </span>
+              </div>
+              <SalesTrendChart data={timeBasedStats.chart} type={reportType} />
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <h4 className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">
+                  Top Selling ({reportType})
+                </h4>
+                <div className="space-y-2">
+                  {timeBasedStats.hotSelling.slice(0, 3).map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex justify-between items-center text-xs group cursor-default"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold ${
+                            i === 0
+                              ? "bg-orange-100 text-[#f7650b]"
+                              : i === 1
+                              ? "bg-slate-100 text-slate-600"
+                              : "bg-slate-50 text-slate-400"
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <span className="font-bold text-slate-600 group-hover:text-slate-900 text-[11px]">
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className="font-bold text-slate-900 text-[10px]">
+                        {item.count} orders
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-[2rem] p-5 border border-slate-100 shadow-xl shadow-slate-200/20 shrink-0">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-900/20">
+                  <Package size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 leading-none text-sm">
+                    Packages
+                  </h3>
+                  <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wide">
+                    Client Subscriptions
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <PackageCountCard
+                  title="Yearly Video"
+                  type="video"
+                  count={packageData.yearlyVideo.length}
+                  onClick={() =>
+                    setMemberModal({
+                      isOpen: true,
+                      title: "Yearly Video Plan",
+                      members: packageData.yearlyVideo,
+                    })
+                  }
+                />
+                <PackageCountCard
+                  title="Yearly Image"
+                  type="image"
+                  count={packageData.yearlyImage.length}
+                  onClick={() =>
+                    setMemberModal({
+                      isOpen: true,
+                      title: "Yearly Image Plan",
+                      members: packageData.yearlyImage,
+                    })
+                  }
+                />
+                <PackageCountCard
+                  title="Monthly Video"
+                  type="video"
+                  count={packageData.monthlyVideo.length}
+                  onClick={() =>
+                    setMemberModal({
+                      isOpen: true,
+                      title: "Monthly Video Plan",
+                      members: packageData.monthlyVideo,
+                    })
+                  }
+                />
+                <PackageCountCard
+                  title="Monthly Image"
+                  type="image"
+                  count={packageData.monthlyImage.length}
+                  onClick={() =>
+                    setMemberModal({
+                      isOpen: true,
+                      title: "Monthly Image Plan",
+                      members: packageData.monthlyImage,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* --- CREATE ORDER MODAL --- */}
+      {/* MODALS */}
       <CreateOrderModal
         isOpen={isOrderModalOpen}
         onClose={() => setIsOrderModalOpen(false)}
         onSubmit={handleCreateOrder}
         partnerName={agencyName}
+      />
+      <MemberDetailsModal
+        isOpen={memberModal.isOpen}
+        onClose={() => setMemberModal({ ...memberModal, isOpen: false })}
+        title={memberModal.title}
+        members={memberModal.members}
+      />
+      <PaymentUpdateModal
+        isOpen={paymentModal.isOpen}
+        onClose={() => setPaymentModal({ isOpen: false, order: null })}
+        order={paymentModal.order}
+      />
+      <OrderDetailsModal
+        isOpen={detailsModal.isOpen}
+        onClose={() => setDetailsModal({ isOpen: false, order: null })}
+        order={detailsModal.order}
       />
     </main>
   );
