@@ -1,5 +1,3 @@
- // src/pages/Pricing.jsx
-
 import React from "react";
 import { motion } from "framer-motion";
 import {
@@ -17,8 +15,8 @@ const plans = [
     id: "starter",
     name: "Starter",
     tagline: "Perfect for beginners",
-    price: "₹499",
-    period: "/month",
+    price: "₹999",
+    period: "/one-time",
     highlight: false,
     badge: "Best for Trying",
     description: "Get started with Alife Stable and explore core features.",
@@ -30,11 +28,11 @@ const plans = [
     ],
   },
   {
-    id: "growth",
-    name: "Growth",
+    id: "booster",
+    name: "Booster",
     tagline: "For serious creators",
-    price: "₹999",
-    period: "/month",
+    price: "₹2,499",
+    period: "/one-time",
     highlight: true,
     badge: "Most Popular",
     description: "Powerful tools to grow your personal brand or agency.",
@@ -47,16 +45,16 @@ const plans = [
     ],
   },
   {
-    id: "pro",
-    name: "Pro Agency",
+    id: "academic",
+    name: "Academic",
     tagline: "For teams & agencies",
-    price: "₹1,999",
-    period: "/month",
+    price: "₹4,999",
+    period: "/one-time",
     highlight: false,
-    badge: "For Agencies",
+    badge: "For Experts",
     description: "Built for agencies handling multiple clients and brands.",
     features: [
-      "Everything in Growth",
+      "Everything in Booster",
       "Multi-member collaboration",
       "Client-ready reports & exports",
       "Dedicated success manager",
@@ -258,9 +256,7 @@ const Pricing = () => {
                       >
                         <CheckCircle2
                           className={`mt-0.5 w-4 h-4 ${
-                            plan.highlight
-                              ? "text-[#f7650b]"
-                              : "text-[#f7650b]"
+                            plan.highlight ? "text-[#f7650b]" : "text-[#f7650b]"
                           }`}
                         />
                         <span

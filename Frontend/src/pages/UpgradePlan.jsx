@@ -19,7 +19,7 @@ import {
 const PLANS = [
   {
     id: "starter",
-    name: "Pro Starter",
+    name: "Starter",
     priceMonthly: 999,
     priceYearly: 9990, // 2 months free
     description:
@@ -35,8 +35,8 @@ const PLANS = [
     theme: "blue",
   },
   {
-    id: "elite",
-    name: "Premium Elite",
+    id: "booster",
+    name: "Booster",
     priceMonthly: 2499,
     priceYearly: 24990,
     description: "Advanced resources for serious growers and freelancers.",
@@ -53,8 +53,8 @@ const PLANS = [
     popular: true,
   },
   {
-    id: "supreme",
-    name: "Supreme Master",
+    id: "academic",
+    name: "Academic",
     priceMonthly: 4999,
     priceYearly: 49990,
     description: "The ultimate toolkit for complete career transformation.",
@@ -95,11 +95,12 @@ const UpgradePlan = () => {
           );
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data().plan) {
-            // Normalize plan string to ID (e.g., "Supreme Master" -> "supreme")
+            // Normalize plan string to ID
             const planName = docSnap.data().plan.toLowerCase();
-            if (planName.includes("supreme")) setCurrentPlan("supreme");
-            else if (planName.includes("elite") || planName.includes("premium"))
-              setCurrentPlan("elite");
+            if (planName.includes("academic") || planName.includes("supreme"))
+              setCurrentPlan("academic");
+            else if (planName.includes("booster") || planName.includes("elite"))
+              setCurrentPlan("booster");
             else setCurrentPlan("starter");
           }
         } catch (error) {

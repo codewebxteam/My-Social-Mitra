@@ -5,27 +5,30 @@ import {
   ShoppingBag,
   Clock,
   Search,
-  ArrowUpRight,
   AlertCircle,
   Loader2,
   Check,
   X,
-  UserPlus,
-  Ticket,
-  Briefcase,
-  Eye,
-  Calendar,
   Zap,
   TrendingUp,
-  Filter,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
-  CreditCard,
-  ShieldCheck,
   Wallet,
   ArrowRight,
-  BellRing,
   PieChart,
-  BarChart3,
+  Calendar,
+  DollarSign,
+  TrendingDown,
+  Plus,
+  Briefcase,
+  ShieldCheck,
+  ArrowUpRight,
+  ArrowDownRight,
+  CreditCard,
+  Mail,
+  Phone,
+  Filter,
 } from "lucide-react";
 import {
   collection,
@@ -34,16 +37,50 @@ import {
   orderBy,
   doc,
   updateDoc,
+  collectionGroup,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase.js";
-import AddStaffModal from "../components/AddStaffModal";
-import GenerateCouponModal from "../components/GenerateCouponModal";
 
 // --- 1. UTILITIES ---
 const formatPrice = (value) => {
-  if (!value) return "₹0";
+  if (!value && value !== 0) return "₹0";
   const num = Number(value.toString().replace(/[^0-9.-]+/g, ""));
   return `₹${num.toLocaleString("en-IN")}`;
+};
+
+// --- FIX: AGGRESSIVE SCROLL LOCK HOOK ---
+const useScrollLock = () => {
+  useEffect(() => {
+    // Calculate scrollbar width to prevent layout shift
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+
+    // Apply strict styles to lock scrolling
+    const originalBodyStyle = document.body.style.cssText;
+    const originalHtmlStyle = document.documentElement.style.cssText;
+
+    document.body.style.cssText = `overflow: hidden !important; padding-right: ${scrollbarWidth}px;`;
+    document.documentElement.style.cssText = `overflow: hidden !important;`;
+
+    return () => {
+      // Restore original styles
+      document.body.style.cssText = originalBodyStyle;
+      document.documentElement.style.cssText = originalHtmlStyle;
+    };
+  }, []);
+};
+
+const PLAN_PRICES = {
+  starter: 999,
+  booster: 2499,
+  academic: 4999,
+  "pro starter": 999,
+  "premium elite": 2499,
+  "supreme master": 4999,
+  growth: 2499,
+  agency: 4999,
 };
 
 const getStatusConfig = (status) => {
@@ -55,7 +92,6 @@ const getStatusConfig = (status) => {
       bg: "bg-emerald-50",
       border: "border-emerald-200",
       label: "Completed",
-      badge: "bg-emerald-500",
     };
   if (s.includes("pending") || s.includes("approval"))
     return {
@@ -63,8 +99,7 @@ const getStatusConfig = (status) => {
       text: "text-amber-700",
       bg: "bg-amber-50",
       border: "border-amber-200",
-      label: "Approval Req",
-      badge: "bg-amber-500",
+      label: "Pending",
     };
   if (s.includes("progress"))
     return {
@@ -73,7 +108,6 @@ const getStatusConfig = (status) => {
       bg: "bg-blue-50",
       border: "border-blue-200",
       label: "In Progress",
-      badge: "bg-blue-500",
     };
   if (s.includes("reject") || s.includes("cancel"))
     return {
@@ -81,8 +115,7 @@ const getStatusConfig = (status) => {
       text: "text-rose-700",
       bg: "bg-rose-50",
       border: "border-rose-200",
-      label: "Rejected",
-      badge: "bg-rose-500",
+      label: "Cancelled",
     };
   return {
     icon: AlertCircle,
@@ -90,143 +123,74 @@ const getStatusConfig = (status) => {
     bg: "bg-slate-50",
     border: "border-slate-200",
     label: status?.replace(/_/g, " ") || "Unknown",
-    badge: "bg-slate-500",
   };
 };
 
-// --- 2. COMPONENTS ---
+// --- 2. SUB-COMPONENTS ---
 
-// Stat Card
-const StatCard = ({ title, value, icon, subLabel, theme, trend }) => {
-  const themes = {
-    blue: "from-blue-500 to-blue-600 shadow-blue-500/20",
-    emerald: "from-emerald-500 to-emerald-600 shadow-emerald-500/20",
-    amber: "from-amber-500 to-amber-600 shadow-amber-500/20",
-    indigo: "from-indigo-500 to-indigo-600 shadow-indigo-500/20",
-    rose: "from-rose-500 to-rose-600 shadow-rose-500/20",
-  };
-  const bgGradient = themes[theme] || themes.blue;
-
-  return (
-    <motion.div
-      whileHover={{ y: -5 }}
-      className="relative p-5 rounded-[2rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden flex flex-col justify-between h-full"
-    >
-      <div
-        className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${bgGradient} opacity-10 rounded-bl-[4rem] -mr-4 -mt-4`}
-      />
-      <div className="flex justify-between items-start mb-3 relative z-10">
-        <div
-          className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${bgGradient} flex items-center justify-center text-white shadow-lg`}
-        >
-          {React.cloneElement(icon, { size: 18 })}
-        </div>
-        {trend && (
-          <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-1 rounded-full bg-slate-50 border border-slate-100 text-slate-500">
-            {trend}
-          </span>
-        )}
-      </div>
-      <div className="relative z-10">
-        <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-          {value}
-        </h3>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-          {title}
-        </p>
-        {subLabel && (
-          <p className="text-[9px] text-slate-400 mt-1 font-medium bg-slate-50 w-fit px-1.5 py-0.5 rounded-md">
-            {subLabel}
-          </p>
-        )}
-      </div>
-    </motion.div>
-  );
-};
-
-// --- CHARTS ---
-const RevenueChart = ({ data, range }) => {
+// A. Thin Buildings (Bar Chart)
+const RevenueBarChart = ({ data }) => {
   if (!data || data.length === 0)
     return (
-      <div className="h-40 flex items-center justify-center text-slate-300 text-xs">
-        No Data
+      <div className="h-48 flex items-center justify-center text-slate-300 text-xs font-bold bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+        No Data for Graph
       </div>
     );
+
   const maxVal = Math.max(...data.map((d) => d.value), 1);
-  const points = data
-    .map((d, i) => {
-      const x = (i / (data.length - 1)) * 100;
-      const y = 100 - (d.value / maxVal) * 100;
-      return `${x},${y}`;
-    })
-    .join(" ");
 
   return (
-    <div className="w-full h-40 relative group mt-4">
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="w-full h-full overflow-visible"
-      >
-        <defs>
-          <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path
-          d={`M0,100 ${points
-            .split(" ")
-            .map((p) => `L${p}`)
-            .join(" ")} L100,100 Z`}
-          fill="url(#revGradient)"
-        />
-        <polyline
-          fill="none"
-          stroke="#10b981"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={points}
-        />
-        {data.map((d, i) => (
-          <circle
+    <div className="w-full h-48 mt-4 flex items-end justify-between gap-1 sm:gap-2 px-2 pb-2">
+      {data.map((d, i) => {
+        const heightPercent = Math.max((d.value / maxVal) * 100, 2);
+
+        return (
+          <div
             key={i}
-            cx={(i / (data.length - 1)) * 100}
-            cy={100 - (d.value / maxVal) * 100}
-            r="2"
-            fill="#fff"
-            stroke="#10b981"
-            strokeWidth="1.5"
-            className="opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-          />
-        ))}
-      </svg>
-      <div className="flex justify-between mt-2 text-[9px] text-slate-400 font-bold uppercase">
-        {data.map((d, i) => (
-          <span key={i}>{d.label}</span>
-        ))}
-      </div>
+            className="flex flex-col items-center gap-2 flex-1 group h-full justify-end"
+          >
+            <div className="w-full relative flex items-end justify-center h-full">
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${heightPercent}%` }}
+                transition={{ duration: 0.8, delay: i * 0.05 }}
+                className="w-2 sm:w-3 bg-slate-800 rounded-t-sm relative min-h-[4px] group-hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-bold px-2 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-xl border border-slate-700">
+                  {formatPrice(d.value)}
+                  <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45 border-b border-r border-slate-700"></div>
+                </div>
+              </motion.div>
+            </div>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-slate-600 transition-colors truncate w-full text-center">
+              {d.label}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
+// B. Pie Chart
 const OrderPieChart = ({ stats }) => {
-  const total = stats.completed + stats.pending + stats.cancelled;
+  const total =
+    stats.completed + stats.pending + stats.cancelled + stats.progress;
   if (total === 0)
     return (
-      <div className="h-32 flex items-center justify-center text-slate-300 text-xs">
-        No Orders
+      <div className="h-32 flex items-center justify-center text-slate-300 text-xs border border-slate-100 rounded-xl bg-slate-50/50 border-dashed">
+        No Data
       </div>
     );
 
   const pComp = (stats.completed / total) * 100;
+  const pProg = (stats.progress / total) * 100;
   const pPend = (stats.pending / total) * 100;
   const pCanc = (stats.cancelled / total) * 100;
 
   return (
-    <div className="flex items-center gap-6 mt-2">
-      <div className="relative w-28 h-28">
+    <div className="flex items-center justify-center gap-6 mt-2">
+      <div className="relative w-28 h-28 shrink-0">
         <svg viewBox="0 0 42 42" className="w-full h-full transform -rotate-90">
           <circle
             cx="21"
@@ -236,36 +200,54 @@ const OrderPieChart = ({ stats }) => {
             stroke="#f1f5f9"
             strokeWidth="6"
           ></circle>
-          <circle
-            cx="21"
-            cy="21"
-            r="15.91549430918954"
-            fill="transparent"
-            stroke="#10b981"
-            strokeWidth="6"
-            strokeDasharray={`${pComp} ${100 - pComp}`}
-            strokeDashoffset="25"
-          ></circle>
-          <circle
-            cx="21"
-            cy="21"
-            r="15.91549430918954"
-            fill="transparent"
-            stroke="#f59e0b"
-            strokeWidth="6"
-            strokeDasharray={`${pPend} ${100 - pPend}`}
-            strokeDashoffset={`${25 - pComp}`}
-          ></circle>
-          <circle
-            cx="21"
-            cy="21"
-            r="15.91549430918954"
-            fill="transparent"
-            stroke="#f43f5e"
-            strokeWidth="6"
-            strokeDasharray={`${pCanc} ${100 - pCanc}`}
-            strokeDashoffset={`${25 - pComp - pPend}`}
-          ></circle>
+          {pComp > 0 && (
+            <circle
+              cx="21"
+              cy="21"
+              r="15.91549430918954"
+              fill="transparent"
+              stroke="#10b981"
+              strokeWidth="6"
+              strokeDasharray={`${pComp} ${100 - pComp}`}
+              strokeDashoffset="25"
+            ></circle>
+          )}
+          {pProg > 0 && (
+            <circle
+              cx="21"
+              cy="21"
+              r="15.91549430918954"
+              fill="transparent"
+              stroke="#3b82f6"
+              strokeWidth="6"
+              strokeDasharray={`${pProg} ${100 - pProg}`}
+              strokeDashoffset={`${25 - pComp}`}
+            ></circle>
+          )}
+          {pPend > 0 && (
+            <circle
+              cx="21"
+              cy="21"
+              r="15.91549430918954"
+              fill="transparent"
+              stroke="#f59e0b"
+              strokeWidth="6"
+              strokeDasharray={`${pPend} ${100 - pPend}`}
+              strokeDashoffset={`${25 - pComp - pProg}`}
+            ></circle>
+          )}
+          {pCanc > 0 && (
+            <circle
+              cx="21"
+              cy="21"
+              r="15.91549430918954"
+              fill="transparent"
+              stroke="#f43f5e"
+              strokeWidth="6"
+              strokeDasharray={`${pCanc} ${100 - pCanc}`}
+              strokeDashoffset={`${25 - pComp - pProg - pPend}`}
+            ></circle>
+          )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-lg font-black text-slate-800">{total}</span>
@@ -274,23 +256,29 @@ const OrderPieChart = ({ stats }) => {
           </span>
         </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
           <span className="text-[10px] font-bold text-slate-600 uppercase">
             {stats.completed} Completed
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+          <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+          <span className="text-[10px] font-bold text-slate-600 uppercase">
+            {stats.progress} In Progress
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-amber-500"></div>
           <span className="text-[10px] font-bold text-slate-600 uppercase">
             {stats.pending} Pending
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+          <div className="w-2 h-2 rounded-full bg-rose-500"></div>
           <span className="text-[10px] font-bold text-slate-600 uppercase">
-            {stats.cancelled} Void
+            {stats.cancelled} Cancelled
           </span>
         </div>
       </div>
@@ -298,124 +286,507 @@ const OrderPieChart = ({ stats }) => {
   );
 };
 
-// --- MODALS ---
-const PartnerLedgerModal = ({ isOpen, onClose, partner }) => {
-  if (!isOpen || !partner) return null;
+// C. Dashboard Card
+const DashboardCard = ({
+  title,
+  mainValue,
+  icon: Icon,
+  color,
+  children,
+  onClick,
+  isInteractive,
+}) => {
+  const colorStyles = {
+    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    rose: "bg-rose-50 text-rose-600 border-rose-100",
+    blue: "bg-blue-50 text-blue-600 border-blue-100",
+    amber: "bg-amber-50 text-amber-600 border-amber-100",
+    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
+  };
+
   return (
-    <AnimatePresence>
+    <motion.div
+      whileHover={isInteractive ? { y: -2 } : {}}
+      onClick={onClick}
+      className={`relative p-5 rounded-[1.5rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/40 flex flex-col justify-between h-full overflow-hidden transition-all duration-300 ${
+        isInteractive
+          ? "cursor-pointer hover:border-blue-300 hover:shadow-blue-200/50"
+          : ""
+      }`}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <div className="relative z-10">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+            {title}
+          </p>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+            {mainValue}
+          </h3>
+        </div>
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+            colorStyles[color] || colorStyles.blue
+          }`}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+      <div className="relative z-10 mt-auto pt-3 border-t border-slate-50 text-[10px] sm:text-[11px] font-medium text-slate-500 space-y-1.5">
+        {children}
+      </div>
+    </motion.div>
+  );
+};
+
+// --- 3. MODALS ---
+
+const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-auto">
+      <span className="text-[10px] font-bold text-slate-400 uppercase">
+        Page {currentPage} of {totalPages}
+      </span>
+      <div className="flex gap-1">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// 1. ADD EXPENSE FORM
+const AddExpenseForm = ({ onClose }) => {
+  const [formData, setFormData] = useState({
+    amount: "",
+    category: "Expenses",
+    description: "",
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await addDoc(collection(db, "expenses"), {
+        amount: parseFloat(formData.amount),
+        category: formData.category,
+        description: formData.description,
+        createdAt: serverTimestamp(),
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4 animate-in fade-in slide-in-from-top-4">
+      <div className="flex justify-between items-center mb-3">
+        <h4 className="text-xs font-bold text-slate-800">New Entry</h4>
+        <button
+          onClick={onClose}
+          className="text-slate-400 hover:text-slate-600"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+              Amount (₹)
+            </label>
+            <input
+              type="number"
+              required
+              value={formData.amount}
+              onChange={(e) =>
+                setFormData({ ...formData, amount: e.target.value })
+              }
+              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold focus:border-rose-500 outline-none"
+              placeholder="0.00"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+              Type
+            </label>
+            <select
+              value={formData.category}
+              onChange={(e) =>
+                setFormData({ ...formData, category: e.target.value })
+              }
+              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium outline-none"
+            >
+              <option value="Expenses">Expenses</option>
+              <option value="Purchase Bill">Purchase Bill</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+            Description
+          </label>
+          <input
+            type="text"
+            required
+            value={formData.description}
+            onChange={(e) =>
+              setFormData({ ...formData, description: e.target.value })
+            }
+            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium outline-none"
+            placeholder="Details..."
+          />
+        </div>
+        <button
+          disabled={loading}
+          className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            <Loader2 className="animate-spin" size={14} />
+          ) : (
+            "Save Record"
+          )}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// 2. EXPENSES LIST MODAL
+const ExpensesListModal = ({ isOpen, onClose, expenses }) => {
+  useScrollLock();
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  if (!isOpen) return null;
+
+  const displayItems = expenses.slice(0, 5);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100]"
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 pointer-events-none">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] pointer-events-auto"
-        >
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                {partner.name}
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Financial History
-              </p>
-            </div>
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="relative bg-white w-full max-w-lg rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] z-10 overflow-hidden"
+      >
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">
+              Recent Expenses
+            </h3>
+            <p className="text-[10px] text-slate-500">Last 5 records</p>
+          </div>
+          <div className="flex gap-2">
+            {!showAddForm && (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors font-bold text-xs flex items-center gap-1"
+              >
+                <Plus size={14} /> Add New
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-slate-200 transition-colors"
+              className="p-2 hover:bg-slate-200 rounded-full text-slate-400"
             >
-              <X size={20} className="text-slate-400" />
+              <X size={18} />
             </button>
           </div>
-          <div className="p-6 grid grid-cols-3 gap-4 bg-white shrink-0">
-            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center">
-              <p className="text-[10px] uppercase font-bold text-blue-600 mb-1">
-                Total Orders
-              </p>
-              <p className="text-2xl font-black text-blue-700">
-                {partner.history.length}
-              </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+          {showAddForm && (
+            <AddExpenseForm onClose={() => setShowAddForm(false)} />
+          )}
+
+          {displayItems.length === 0 ? (
+            <div className="text-center text-slate-400 text-xs py-10">
+              No expenses recorded.
             </div>
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
-              <p className="text-[10px] uppercase font-bold text-emerald-600 mb-1">
-                Total Paid
-              </p>
-              <p className="text-2xl font-black text-emerald-700">
-                {formatPrice(partner.totalPaid)}
-              </p>
-            </div>
-            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 text-center">
-              <p className="text-[10px] uppercase font-bold text-rose-600 mb-1">
-                Current Due
-              </p>
-              <p className="text-2xl font-black text-rose-700">
-                {formatPrice(partner.currentDue)}
-              </p>
-            </div>
-          </div>
-          <div
-            className="flex-1 overflow-y-auto custom-scrollbar p-6 pt-0"
-            data-lenis-prevent
-          >
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 mt-6">
-              Transactions
-            </h3>
-            <div className="space-y-3">
-              {partner.history.map((order) => (
+          ) : (
+            <div className="space-y-2">
+              {displayItems.map((item, idx) => (
                 <div
-                  key={order.id}
-                  className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-slate-200 flex justify-between items-center"
+                  key={idx}
+                  className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-white hover:border-slate-200 transition-colors"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm">
-                        {order.service?.name}
-                      </span>
-                      <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-500">
-                        {order.Duration}
-                      </span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                      <CreditCard size={14} />
                     </div>
-                    <p className="text-[10px] text-slate-400 font-mono mt-1">
-                      {order.displayId} • {order.dateFormatted}
-                    </p>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        {item.description}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        {item.dateFormatted}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-slate-900">
-                      {formatPrice(order.adminPrice)}
-                    </div>
-                    {order.dueAmount > 0 ? (
-                      <p className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full mt-1">
-                        Due: {formatPrice(order.dueAmount)}
-                      </p>
-                    ) : (
-                      <p className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-1 flex items-center gap-1">
-                        <CheckCircle2 size={10} /> Paid
-                      </p>
-                    )}
+                    <p className="text-sm font-black text-slate-900">
+                      {formatPrice(item.amount)}
+                    </p>
+                    <span
+                      className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                        item.category === "Purchase Bill"
+                          ? "bg-indigo-50 text-indigo-600"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {item.category}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+          )}
+        </div>
+      </motion.div>
+    </div>
   );
 };
 
+// 3. MEMBERS / PARTNERS MODAL
+const MembersListModal = ({ isOpen, onClose, partners }) => {
+  useScrollLock();
+  if (!isOpen) return null;
+
+  // Filter for both "member" and "partner", sort by date, take last 5
+  const displayItems = partners
+    .filter((p) => {
+      const r = (p.role || "").toLowerCase();
+      return r === "member" || r === "partner";
+    })
+    .sort((a, b) => b.createdAtDate - a.createdAtDate)
+    .slice(0, 5);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="relative bg-white w-full max-w-lg rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] z-10 overflow-hidden"
+      >
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">New Partners</h3>
+            <p className="text-[10px] text-slate-500">Last 5 Registered</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-200 rounded-full text-slate-400"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+          {displayItems.length === 0 ? (
+            <div className="text-center text-slate-400 text-xs py-10">
+              No partners found.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {displayItems.map((p) => (
+                <div
+                  key={p.id}
+                  className="p-3 rounded-2xl border border-slate-100 bg-white hover:border-blue-100 flex items-center gap-3 group transition-all"
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                    {p.fullName ? p.fullName.charAt(0) : "U"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <h4 className="text-xs font-bold text-slate-900 truncate">
+                        {p.fullName || "Unknown User"}
+                      </h4>
+                      {/* --- FIXED: SHOWING PLAN NAME INSTEAD OF ROLE --- */}
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-[9px] font-bold text-slate-500 uppercase">
+                        {p.plan || "Starter"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="flex items-center gap-1 text-[10px] text-slate-400 truncate">
+                        <Mail size={10} /> {p.email}
+                      </span>
+                      {p.phone && (
+                        <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <Phone size={10} /> {p.phone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// 4. NET P&L DETAILS MODAL
+const PnLDetailsModal = ({ isOpen, onClose, revenueData, expenseData }) => {
+  useScrollLock();
+  const [activeTab, setActiveTab] = useState("credit");
+
+  if (!isOpen) return null;
+
+  const fullList = activeTab === "credit" ? revenueData : expenseData;
+  const displayItems = fullList.slice(0, 5);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="relative bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] z-10 overflow-hidden"
+      >
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center shrink-0">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab("credit")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === "credit"
+                  ? "bg-white shadow-md text-emerald-600"
+                  : "text-slate-400 hover:bg-white/50"
+              }`}
+            >
+              <ArrowDownRight size={14} /> Credit (Income)
+            </button>
+            <button
+              onClick={() => setActiveTab("debit")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === "debit"
+                  ? "bg-white shadow-md text-rose-600"
+                  : "text-slate-400 hover:bg-white/50"
+              }`}
+            >
+              <ArrowUpRight size={14} /> Debit (Expense)
+            </button>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-200 rounded-full text-slate-400"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+          {displayItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-slate-300 text-xs font-bold">
+              No records found.
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-3 text-center">
+                Showing Last 5 Transactions
+              </p>
+              <div className="space-y-2">
+                {displayItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex justify-between items-center p-3 rounded-xl border border-slate-100 bg-white hover:border-slate-200 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          activeTab === "credit"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-rose-50 text-rose-600"
+                        }`}
+                      >
+                        {activeTab === "credit" ? (
+                          <Wallet size={14} />
+                        ) : (
+                          <CreditCard size={14} />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          {item.description ||
+                            item.serviceName ||
+                            "Transaction"}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          {item.dateFormatted}{" "}
+                          {item.subText ? `• ${item.subText}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={`text-sm font-black ${
+                          activeTab === "credit"
+                            ? "text-emerald-600"
+                            : "text-rose-600"
+                        }`}
+                      >
+                        {activeTab === "credit" ? "+" : "-"}
+                        {formatPrice(item.amount)}
+                      </p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                        {item.category || "Service"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// 5. PAYMENT VERIFICATION MODAL
 const PaymentVerificationModal = ({ isOpen, onClose, order }) => {
+  useScrollLock();
   const [amount, setAmount] = useState(order?.paymentRequestAmount || "");
   const [loading, setLoading] = useState(false);
   if (!isOpen || !order) return null;
   const totalCost = parseFloat(order.pricing?.priceToAdmin || 0);
   const currentlyPaid = parseFloat(order.paidAmount || 0);
   const remainingDue = totalCost - currentlyPaid;
+  const isProgress = order.status === "In_Progress";
   const handleVerifyPayment = async () => {
     setLoading(true);
     const newPaid = currentlyPaid + parseFloat(amount || 0);
@@ -423,7 +794,7 @@ const PaymentVerificationModal = ({ isOpen, onClose, order }) => {
       await updateDoc(doc(db, "orders", order.id), {
         paidAmount: newPaid,
         paymentStatus: newPaid >= totalCost ? "Paid" : "Partial",
-        paymentRequestAmount: 0, // Clear Request
+        paymentRequestAmount: 0,
       });
       onClose();
     } catch (e) {
@@ -443,282 +814,332 @@ const PaymentVerificationModal = ({ isOpen, onClose, order }) => {
       setLoading(false);
     }
   };
-
   return (
-    <AnimatePresence>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100]"
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 pointer-events-none">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden pointer-events-auto"
-        >
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                <ShieldCheck size={20} />
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="relative bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden z-10"
+      >
+        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Manage Order</h2>
+            <p className="text-[10px] text-slate-500 font-mono">
+              {order.displayId}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-slate-200 rounded-full text-slate-400"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-slate-500 font-medium">Total Cost</span>
+              <span className="font-bold text-slate-900">
+                {formatPrice(totalCost)}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs mb-3">
+              <span className="text-slate-500 font-medium">Due</span>
+              <span className="font-bold text-rose-600 bg-rose-50 px-1.5 rounded">
+                {formatPrice(remainingDue)}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full pl-5 pr-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-blue-500"
+                />
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Verify Payment
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Partner:{" "}
-                  <span className="font-bold text-slate-700">
-                    {order.partnerName}
-                  </span>
-                </p>
-              </div>
+              <button
+                onClick={handleVerifyPayment}
+                disabled={loading || !amount}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-[10px] font-bold shadow-md transition-all flex items-center gap-1 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} />
+                )}{" "}
+                Verify
+              </button>
             </div>
           </div>
-          <div className="p-6 space-y-6">
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-              <div className="flex justify-between items-center mb-4 border-b border-slate-200 pb-3">
-                <span className="text-xs font-bold text-slate-400 uppercase">
-                  Order ID
-                </span>
-                <span className="text-xs font-mono font-bold text-slate-600">
-                  {order.displayId}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-500 font-medium">Total Cost</span>
-                <span className="font-bold text-slate-900">
-                  {formatPrice(totalCost)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm mb-4">
-                <span className="text-slate-500 font-medium">Due</span>
-                <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                  {formatPrice(remainingDue)}
-                </span>
-              </div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Add Verified Amount
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">
-                    ₹
-                  </span>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full pl-6 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-blue-500 transition-all"
-                  />
-                </div>
-                <button
-                  onClick={handleVerifyPayment}
-                  disabled={loading || !amount || parseFloat(amount) <= 0}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1 disabled:opacity-50 disabled:shadow-none"
-                >
-                  {loading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Check size={14} />
-                  )}{" "}
-                  Confirm
-                </button>
-              </div>
-              {order.paymentRequestAmount > 0 && (
-                <div className="mt-3 bg-amber-50 border border-amber-200 p-2 rounded-lg text-amber-700 text-[10px] font-bold flex items-center gap-2">
-                  <BellRing size={12} /> Partner claims payment: ₹
-                  {order.paymentRequestAmount}
-                </div>
-              )}
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Zap size={14} className="text-amber-500" /> Update Status
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleStatus("In_Progress")}
-                  className="py-3 rounded-xl border border-blue-100 bg-blue-50 text-blue-700 font-bold text-xs hover:bg-blue-100 hover:shadow-md transition-all"
-                >
-                  Mark In Progress
-                </button>
-                <button
-                  onClick={() => handleStatus("Completed")}
-                  className="py-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 hover:shadow-md transition-all"
-                >
-                  Mark Completed
-                </button>
-                <button
-                  onClick={() => handleStatus("Rejected")}
-                  className="col-span-2 py-3 rounded-xl border border-rose-100 bg-rose-50 text-rose-700 font-bold text-xs hover:bg-rose-100 hover:shadow-md transition-all"
-                >
-                  Reject Order
-                </button>
-              </div>
+          <div>
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Zap size={12} className="text-amber-500" /> Actions
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleStatus("In_Progress")}
+                className="py-2.5 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 font-bold text-[10px] hover:bg-blue-100 transition-all"
+              >
+                In Progress
+              </button>
+              <button
+                onClick={() => handleStatus("Completed")}
+                disabled={!isProgress}
+                className={`py-2.5 rounded-lg border font-bold text-[10px] transition-all flex items-center justify-center gap-1 ${
+                  isProgress
+                    ? "border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                {!isProgress && <ShieldCheck size={10} />} Completed
+              </button>
+              <button
+                onClick={() => handleStatus("Rejected")}
+                className="col-span-2 py-2.5 rounded-lg border border-rose-100 bg-rose-50 text-rose-700 font-bold text-[10px] hover:bg-rose-100 transition-all"
+              >
+                Reject Order
+              </button>
             </div>
           </div>
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-            <button
-              onClick={onClose}
-              className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        </div>
+      </motion.div>
+    </div>
   );
 };
 
-// --- MAIN DASHBOARD ---
+// --- 4. MAIN DASHBOARD ---
 const AdminDashboard = () => {
   const [orders, setOrders] = useState([]);
   const [partners, setPartners] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("all_orders");
+
+  // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState("");
-  const [chartFilter, setChartFilter] = useState("Weekly"); // TOGGLE STATE
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [chartFilter, setChartFilter] = useState("Weekly");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  const [selectedPartner, setSelectedPartner] = useState(null);
+  // Modal States
   const [actionOrder, setActionOrder] = useState(null);
-  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
-  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [isExpensesViewModalOpen, setIsExpensesViewModalOpen] = useState(false);
+  const [isPnLModalOpen, setIsPnLModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
-  const [financials, setFinancials] = useState({
-    totalRevenue: 0,
-    totalDue: 0,
-    partnerCount: 0,
-    pendingCount: 0,
+  // Date Filter State
+  const [dateRange, setDateRange] = useState({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      .toISOString()
+      .split("T")[0],
+    end: new Date().toISOString().split("T")[0],
   });
-  const [pieData, setPieData] = useState({
-    completed: 0,
-    pending: 0,
-    cancelled: 0,
-  });
-  const [revenueData, setRevenueData] = useState([]);
 
-  // Time
   const [time, setTime] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
 
+  // Fetch Data
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedOrders = [];
-      const partnerMap = {};
-      let totalRev = 0,
-        totalDue = 0,
-        pendingReqs = 0;
-      let comp = 0,
-        pend = 0,
-        canc = 0;
-
-      // Mock daily revenue buckets
-      const days = {};
-      [...Array(7)].forEach((_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        days[d.toLocaleDateString("en-IN", { weekday: "short" })] = 0;
-      });
-
-      snapshot.docs.forEach((doc) => {
-        const d = doc.data();
-        const dateObj = d.createdAt?.toDate ? d.createdAt.toDate() : new Date();
-        const adminCost = parseFloat(d.pricing?.priceToAdmin || 0);
-        const paid = parseFloat(d.paidAmount || 0);
-        const due = Math.max(0, adminCost - paid);
-
-        totalRev += paid;
-        totalDue += due;
-        if (d.status === "PENDING_APPROVAL_FROM_ADMIN") pendingReqs++;
-
-        // Status Counts for Pie
-        if (d.status?.toLowerCase().includes("completed")) comp++;
-        else if (
-          d.status?.toLowerCase().includes("pending") ||
-          d.status?.includes("APPROVAL")
-        )
-          pend++;
-        else if (
-          d.status?.toLowerCase().includes("reject") ||
-          d.status?.toLowerCase().includes("cancel")
-        )
-          canc++;
-
-        // Revenue Chart (Distribution based on createdAt - Simple Logic)
-        const dayKey = dateObj.toLocaleDateString("en-IN", {
-          weekday: "short",
+    const unsubOrders = onSnapshot(
+      query(collection(db, "orders"), orderBy("createdAt", "desc")),
+      (snap) => {
+        const list = snap.docs.map((doc) => {
+          const d = doc.data();
+          const dateObj = d.createdAt?.toDate
+            ? d.createdAt.toDate()
+            : new Date();
+          return {
+            id: doc.id,
+            ...d,
+            adminPrice: parseFloat(d.pricing?.priceToAdmin || 0),
+            paidAmount: parseFloat(d.paidAmount || 0),
+            dueAmount: Math.max(
+              0,
+              parseFloat(d.pricing?.priceToAdmin || 0) -
+                parseFloat(d.paidAmount || 0)
+            ),
+            createdAtDate: dateObj,
+            dateFormatted: dateObj.toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+            }),
+          };
         });
-        if (days[dayKey] !== undefined) days[dayKey] += paid;
+        setOrders(list);
+      }
+    );
 
-        const orderObj = {
+    const unsubPartners = onSnapshot(
+      query(collectionGroup(db, "profile")),
+      (snap) => {
+        const list = [];
+        snap.forEach((doc) => {
+          if (doc.id === "account_info") {
+            const d = doc.data();
+            list.push({
+              id: doc.ref.parent.parent.id,
+              ...d,
+              createdAtDate: d.joinedAt ? new Date(d.joinedAt) : new Date(),
+            });
+          }
+        });
+        setPartners(list);
+      }
+    );
+
+    const unsubExpenses = onSnapshot(
+      query(collection(db, "expenses"), orderBy("createdAt", "desc")),
+      (snap) => {
+        const list = snap.docs.map((doc) => ({
           id: doc.id,
-          ...d,
-          adminPrice: adminCost,
-          paidAmount: paid,
-          dueAmount: due,
-          dateFormatted: dateObj.toLocaleDateString("en-IN", {
-            day: "numeric",
-            month: "short",
-          }),
-          createdAtDate: dateObj,
-        };
-        fetchedOrders.push(orderObj);
+          ...doc.data(),
+          createdAtDate: doc.data().createdAt?.toDate() || new Date(),
+          dateFormatted: (
+            doc.data().createdAt?.toDate() || new Date()
+          ).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+        }));
+        setExpenses(list);
+      }
+    );
 
-        if (d.partnerId) {
-          if (!partnerMap[d.partnerId])
-            partnerMap[d.partnerId] = {
-              id: d.partnerId,
-              name: d.partnerName || "Unknown",
-              totalPaid: 0,
-              currentDue: 0,
-              history: [],
-            };
-          partnerMap[d.partnerId].totalPaid += paid;
-          partnerMap[d.partnerId].currentDue += due;
-          partnerMap[d.partnerId].history.push(orderObj);
-        }
-      });
-
-      const revChart = Object.entries(days)
-        .map(([label, value]) => ({ label, value }))
-        .reverse();
-
-      setOrders(fetchedOrders);
-      setPartners(
-        Object.values(partnerMap).sort((a, b) => b.currentDue - a.currentDue)
-      );
-      setFinancials({
-        totalRevenue: totalRev,
-        totalDue: totalDue,
-        partnerCount: Object.keys(partnerMap).length,
-        pendingCount: pendingReqs,
-      });
-      setPieData({ completed: comp, pending: pend, cancelled: canc });
-      setRevenueData(revChart);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    return () => {
+      unsubOrders();
+      unsubPartners();
+      unsubExpenses();
+    };
   }, []);
 
-  // --- DYNAMIC CHART DATA LOGIC ---
-  const { chartData, pieData: activePieData } = useMemo(() => {
+  useEffect(() => {
+    if (orders.length || partners.length) setLoading(false);
+  }, [orders, partners]);
+
+  // STATS CALCULATION
+  const stats = useMemo(() => {
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
+    end.setHours(23, 59, 59);
+
+    const isInRange = (date) => date >= start && date <= end;
+
+    const filteredOrders = orders.filter((o) => isInRange(o.createdAtDate));
+    const filteredExpenses = expenses.filter((e) => isInRange(e.createdAtDate));
+    const filteredPartners = partners.filter((p) => isInRange(p.createdAtDate));
+
+    // Revenue
+    const serviceRevenue = filteredOrders.reduce(
+      (sum, o) => sum + o.paidAmount,
+      0
+    );
+    const partnershipRevenue = filteredPartners.reduce(
+      (sum, p) => sum + (PLAN_PRICES[(p.plan || "").toLowerCase()] || 0),
+      0
+    );
+    const totalDue = filteredOrders.reduce((sum, o) => sum + o.dueAmount, 0);
+    const totalRevenue = serviceRevenue + partnershipRevenue;
+    const totalExpenses = filteredExpenses.reduce(
+      (sum, e) => sum + (e.amount || 0),
+      0
+    );
+    const netProfit = totalRevenue - totalExpenses;
+
+    // Orders Count
+    let completed = 0,
+      pending = 0,
+      progress = 0,
+      cancelled = 0;
+    filteredOrders.forEach((o) => {
+      const s = (o.status || "").toLowerCase();
+      if (s.includes("complet") || s.includes("deliver")) completed++;
+      else if (s.includes("progress")) progress++;
+      else if (s.includes("reject") || s.includes("cancel")) cancelled++;
+      else pending++;
+    });
+
+    // Partners
+    const partnerUsers = filteredPartners.filter(
+      (p) =>
+        (p.role || "").toLowerCase() === "partner" ||
+        (p.role || "").toLowerCase() === "member"
+    );
+    let starter = 0,
+      booster = 0,
+      academic = 0;
+    partnerUsers.forEach((p) => {
+      const pl = (p.plan || "").toLowerCase();
+      if (pl.includes("starter")) starter++;
+      else if (pl.includes("booster") || pl.includes("elite")) booster++;
+      else if (pl.includes("academic") || pl.includes("master")) academic++;
+      else starter++;
+    });
+
+    return {
+      revenue: {
+        total: totalRevenue,
+        partnership: partnershipRevenue,
+        service: serviceRevenue,
+        due: totalDue,
+      },
+      expenses: { total: totalExpenses },
+      pnl: { value: netProfit, isLoss: netProfit < 0 },
+      orders: {
+        total: filteredOrders.length,
+        completed,
+        pending,
+        progress,
+        cancelled,
+      },
+      partners: { total: partnerUsers.length, starter, booster, academic },
+    };
+  }, [orders, partners, expenses, dateRange]);
+
+  // Data for Modals
+  const pnlModalData = useMemo(() => {
+    const credit = orders
+      .filter((o) => o.paidAmount > 0)
+      .map((o) => ({
+        amount: o.paidAmount,
+        description: `Order: ${o.displayId}`,
+        serviceName: o.service?.name,
+        subText: o.partnerName,
+        category: "Service Revenue",
+        dateFormatted: o.dateFormatted,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    const debit = expenses
+      .map((e) => ({
+        amount: e.amount,
+        description: e.description,
+        category: e.category,
+        dateFormatted: e.dateFormatted,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    return { credit, debit };
+  }, [orders, expenses]);
+
+  // Chart Data (Bar Chart)
+  const { chartData, pieData } = useMemo(() => {
     const now = new Date();
     let revenuePoints = [];
     let comp = 0,
       pend = 0,
-      canc = 0;
+      canc = 0,
+      prog = 0;
 
-    // Filter orders based on Toggle
     const filteredForCharts = orders.filter((o) => {
       const diffDays = Math.floor(
         (now - o.createdAtDate) / (1000 * 60 * 60 * 24)
@@ -727,13 +1148,11 @@ const AdminDashboard = () => {
     });
 
     filteredForCharts.forEach((o) => {
-      if (o.status?.toLowerCase().includes("completed")) comp++;
-      else if (o.status?.toLowerCase().includes("pending")) pend++;
-      else if (
-        o.status?.toLowerCase().includes("reject") ||
-        o.status?.toLowerCase().includes("cancel")
-      )
-        canc++;
+      const s = o.status?.toLowerCase() || "";
+      if (s.includes("completed")) comp++;
+      else if (s.includes("progress")) prog++;
+      else if (s.includes("reject") || s.includes("cancel")) canc++;
+      else pend++;
     });
 
     if (chartFilter === "Weekly") {
@@ -756,52 +1175,66 @@ const AdminDashboard = () => {
     } else {
       const weeksMap = { "Wk 1": 0, "Wk 2": 0, "Wk 3": 0, "Wk 4": 0 };
       filteredForCharts.forEach((o) => {
-        const diffDays = Math.floor(
-          (now - o.createdAtDate) / (1000 * 60 * 60 * 24)
-        );
-        if (diffDays <= 7) weeksMap["Wk 4"] += o.paidAmount;
-        else if (diffDays <= 14) weeksMap["Wk 3"] += o.paidAmount;
-        else if (diffDays <= 21) weeksMap["Wk 2"] += o.paidAmount;
-        else weeksMap["Wk 1"] += o.paidAmount;
+        const day = o.createdAtDate.getDate();
+        if (day <= 7) weeksMap["Wk 1"] += o.paidAmount;
+        else if (day <= 14) weeksMap["Wk 2"] += o.paidAmount;
+        else if (day <= 21) weeksMap["Wk 3"] += o.paidAmount;
+        else weeksMap["Wk 4"] += o.paidAmount;
       });
       revenuePoints = Object.entries(weeksMap).map(([label, value]) => ({
         label,
         value,
       }));
     }
-
     return {
       chartData: revenuePoints,
-      pieData: { completed: comp, pending: pend, cancelled: canc },
+      pieData: {
+        completed: comp,
+        pending: pend,
+        cancelled: canc,
+        progress: prog,
+      },
     };
   }, [orders, chartFilter]);
 
-  const filteredData = (() => {
-    let data = orders;
-    if (activeTab === "payment_requests")
-      data = orders.filter((o) => o.paymentStatus === "Verification_Pending");
-    return data.filter(
-      (o) =>
-        o.partnerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.displayId?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  })();
+  // Filtered & Paginated Orders
+  const filteredOrders = useMemo(() => {
+    return orders.filter((item) => {
+      const term = searchTerm.toLowerCase();
+      const statusMatch =
+        statusFilter === "All" ||
+        (item.status || "").toLowerCase().includes(statusFilter.toLowerCase());
+      const searchMatch =
+        item.partnerName?.toLowerCase().includes(term) ||
+        item.displayId?.toLowerCase().includes(term) ||
+        item.service?.name?.toLowerCase().includes(term);
+      return statusMatch && searchMatch;
+    });
+  }, [orders, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const currentOrders = filteredOrders.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans pb-12 overflow-x-hidden">
-      {/* Background */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-100/40 rounded-full blur-[120px] translate-x-1/3 -translate-y-1/3" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-100/40 rounded-full blur-[100px] -translate-x-1/3 translate-y-1/3" />
+    <div className="min-h-screen bg-[#f8fafc] font-sans pb-12 overflow-x-hidden text-slate-900">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[10%] -right-[10%] w-[800px] h-[800px] bg-blue-100/40 rounded-full blur-[120px]" />
+        <div className="absolute top-[20%] -left-[10%] w-[600px] h-[600px] bg-indigo-100/30 rounded-full blur-[100px]" />
       </div>
 
-      <div className="relative z-10 max-w-[1600px] mx-auto px-4 sm:px-6 md:px-8 pt-2">
+      <div className="relative z-10 max-w-[1600px] mx-auto px-4 sm:px-6 md:px-8 pt-6">
         {/* HEADER */}
-        <div className="flex flex-col lg:flex-row justify-between items-end gap-6 mb-6 mt-4">
+        <div className="flex flex-col lg:flex-row justify-between items-end gap-6 mb-8">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1.5">
               <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-widest shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>{" "}
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 Admin Console
               </span>
               <span className="text-xs font-mono font-medium text-slate-400">
@@ -815,77 +1248,208 @@ const AdminDashboard = () => {
               Overview
             </h1>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setIsStaffModalOpen(true)}
-              className="px-6 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2"
-            >
-              <UserPlus size={16} /> Add Staff
-            </button>
-            <button
-              onClick={() => setIsCouponModalOpen(true)}
-              className="px-6 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs shadow-lg hover:bg-slate-800 transition-all flex items-center gap-2"
-            >
-              <Ticket size={16} /> New Coupon
-            </button>
+
+          <div className="flex items-center bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="px-3 flex items-center gap-2 text-slate-400">
+              <Calendar size={16} />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Filter
+              </span>
+            </div>
+            <div className="h-6 w-px bg-slate-100 mx-1" />
+            <input
+              type="date"
+              value={dateRange.start}
+              onChange={(e) =>
+                setDateRange((prev) => ({ ...prev, start: e.target.value }))
+              }
+              className="bg-transparent text-xs font-bold text-slate-700 outline-none p-2 cursor-pointer hover:bg-slate-50 rounded-lg"
+            />
+            <span className="text-slate-300 mx-1">to</span>
+            <input
+              type="date"
+              value={dateRange.end}
+              onChange={(e) =>
+                setDateRange((prev) => ({ ...prev, end: e.target.value }))
+              }
+              className="bg-transparent text-xs font-bold text-slate-700 outline-none p-2 cursor-pointer hover:bg-slate-50 rounded-lg"
+            />
           </div>
         </div>
 
-        {/* STATS ROW */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-          <StatCard
+        {/* STATS CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <DashboardCard
             title="Total Revenue"
-            value={formatPrice(financials.totalRevenue)}
-            icon={<Wallet />}
-            subLabel="Verified"
-            theme="emerald"
-            trend="+12%"
-          />
-          <StatCard
-            title="Total Market Due"
-            value={formatPrice(financials.totalDue)}
-            icon={<AlertCircle />}
-            subLabel="Outstanding"
-            theme="rose"
-            trend="High"
-          />
-          <StatCard
-            title="Total Orders"
-            value={orders.length}
-            icon={<ShoppingBag />}
-            subLabel="+ New"
-            theme="blue"
-            trend="Live"
-          />
-          <StatCard
-            title="Pending Approvals"
-            value={financials.pendingCount}
-            icon={<BellRing />}
-            subLabel="Needs Action"
-            theme="amber"
-            trend={financials.pendingCount > 0 ? "Req" : "Clear"}
-          />
-          <StatCard
-            title="Active Partners"
-            value={financials.partnerCount}
-            icon={<Users />}
-            subLabel="Stable"
-            theme="indigo"
-            trend="Stable"
-          />
+            mainValue={formatPrice(stats.revenue.total)}
+            icon={Wallet}
+            color="emerald"
+          >
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-slate-400">Partnership</span>
+              <span className="text-slate-700 font-bold">
+                {formatPrice(stats.revenue.partnership)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Services</span>
+              <span className="text-slate-700 font-bold">
+                {formatPrice(stats.revenue.service)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center border-t border-slate-50 mt-1 pt-1">
+              <span className="text-red-400 font-semibold">Due Amount</span>
+              <span className="text-red-500 font-bold">
+                {formatPrice(stats.revenue.due)}
+              </span>
+            </div>
+          </DashboardCard>
+
+          <DashboardCard
+            title="Total Expenses"
+            mainValue={formatPrice(stats.expenses.total)}
+            icon={DollarSign}
+            color="rose"
+            isInteractive
+            onClick={() => setIsExpensesViewModalOpen(true)}
+          >
+            <div className="flex items-center gap-1 text-rose-500 font-bold mb-2">
+              <Plus size={12} strokeWidth={3} /> Add / View All
+            </div>
+            <p className="text-[10px] text-slate-400 italic">
+              Bills & Expenses
+            </p>
+          </DashboardCard>
+
+          <DashboardCard
+            title="Net P&L"
+            mainValue={
+              <span
+                className={
+                  stats.pnl.isLoss ? "text-rose-500" : "text-emerald-600"
+                }
+              >
+                {stats.pnl.isLoss ? "-" : "+"}
+                {formatPrice(Math.abs(stats.pnl.value))}
+              </span>
+            }
+            icon={stats.pnl.isLoss ? TrendingDown : TrendingUp}
+            color={stats.pnl.isLoss ? "rose" : "indigo"}
+            isInteractive
+            onClick={() => setIsPnLModalOpen(true)}
+          >
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-slate-400">Total Rev</span>
+              <span className="text-emerald-600 font-bold">
+                {formatPrice(stats.revenue.total)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Total Exp</span>
+              <span className="text-rose-500 font-bold">
+                {formatPrice(stats.expenses.total)}
+              </span>
+            </div>
+          </DashboardCard>
+
+          <DashboardCard
+            title="Service Orders"
+            mainValue={stats.orders.total}
+            icon={ShoppingBag}
+            color="blue"
+          >
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1">
+              <div className="flex justify-between">
+                <span className="text-emerald-500">Completed</span>{" "}
+                <b>{stats.orders.completed}</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-500">In Progress</span>{" "}
+                <b>{stats.orders.progress}</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-amber-500">Pending</span>{" "}
+                <b>{stats.orders.pending}</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-rose-500">Cancelled</span>{" "}
+                <b>{stats.orders.cancelled}</b>
+              </div>
+            </div>
+          </DashboardCard>
+
+          <DashboardCard
+            title="New Partners"
+            mainValue={stats.partners.total}
+            icon={Users}
+            color="amber"
+            isInteractive
+            onClick={() => setIsMembersModalOpen(true)}
+          >
+            <div className="space-y-1 pt-1">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Starter</span>
+                <div className="h-1.5 flex-1 mx-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-400"
+                    style={{
+                      width: `${
+                        (stats.partners.starter /
+                          Math.max(stats.partners.total, 1)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+                <b className="text-slate-700">{stats.partners.starter}</b>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Booster</span>
+                <div className="h-1.5 flex-1 mx-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-purple-400"
+                    style={{
+                      width: `${
+                        (stats.partners.booster /
+                          Math.max(stats.partners.total, 1)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+                <b className="text-slate-700">{stats.partners.booster}</b>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Academic</span>
+                <div className="h-1.5 flex-1 mx-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-orange-400"
+                    style={{
+                      width: `${
+                        (stats.partners.academic /
+                          Math.max(stats.partners.total, 1)) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+                <b className="text-slate-700">{stats.partners.academic}</b>
+              </div>
+            </div>
+          </DashboardCard>
         </div>
 
-        {/* CHARTS ROW */}
+        {/* GRAPHS ROW */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2 bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-2">
               <div>
                 <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                  <TrendingUp size={20} className="text-emerald-500" /> Revenue
-                  Trend
+                  <TrendingUp size={20} className="text-blue-600" /> Revenue
+                  Graph
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">
-                  Performance Analytics
+                  Performance over time
                 </p>
               </div>
               <div className="flex bg-slate-100 p-1 rounded-lg">
@@ -904,7 +1468,7 @@ const AdminDashboard = () => {
                 ))}
               </div>
             </div>
-            <RevenueChart data={chartData} range={chartFilter} />
+            <RevenueBarChart data={chartData} />
           </div>
 
           <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/40 relative overflow-hidden flex flex-col justify-center">
@@ -914,291 +1478,208 @@ const AdminDashboard = () => {
                   <PieChart size={20} className="text-blue-500" /> Order Status
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">
-                  Distribution ({chartFilter})
+                  Current distribution
                 </p>
               </div>
             </div>
-            <OrderPieChart stats={activePieData} />
+            <OrderPieChart stats={pieData} />
           </div>
         </div>
 
-        {/* MAIN SECTION */}
-        <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden flex flex-col h-[750px]">
-          <div className="p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-20 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
-            <div className="flex p-1.5 bg-slate-100 rounded-2xl w-full xl:w-auto overflow-x-auto no-scrollbar">
-              <button
-                onClick={() => setActiveTab("all_orders")}
-                className={`flex-1 xl:flex-none px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
-                  activeTab === "all_orders"
-                    ? "bg-white text-blue-600 shadow-md"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <Briefcase size={14} /> All Orders
-              </button>
-              <button
-                onClick={() => setActiveTab("payment_requests")}
-                className={`flex-1 xl:flex-none px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
-                  activeTab === "payment_requests"
-                    ? "bg-white text-amber-600 shadow-md"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <BellRing size={14} /> Payment Requests{" "}
-                {financials.pendingCount > 0 && (
-                  <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px]">
-                    {financials.pendingCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab("ledger")}
-                className={`flex-1 xl:flex-none px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
-                  activeTab === "ledger"
-                    ? "bg-white text-emerald-600 shadow-md"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                <Wallet size={14} /> Partner Ledger
-              </button>
-            </div>
-            <div className="relative w-full xl:w-72 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-              <input
-                type="text"
-                placeholder="Search orders, partners..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:outline-none focus:border-blue-500 transition-all"
-              />
+        {/* MAIN ORDERS TABLE */}
+        <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden flex flex-col min-h-[500px]">
+          <div className="p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-20 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <Briefcase size={20} className="text-slate-400" /> Recent Orders
+              <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px] ml-1">
+                (Total: {filteredOrders.length})
+              </span>
+            </h3>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Status Filter Dropdown */}
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                >
+                  <option value="All">All Status</option>
+                  <option value="Completed">Completed</option>
+                  <option value="In_Progress">In Progress</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64 group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Search orders..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold focus:outline-none focus:border-blue-500 transition-all"
+                />
+              </div>
             </div>
           </div>
 
-          <div
-            className="flex-1 overflow-y-auto custom-scrollbar bg-white p-0"
-            data-lenis-prevent
-          >
+          <div className="flex-1 overflow-x-auto">
             {loading ? (
-              <div className="flex items-center justify-center h-full text-slate-400 text-sm font-bold">
-                <Loader2 className="animate-spin mr-2" /> Loading Dashboard...
+              <div className="flex items-center justify-center h-64 text-slate-400 text-sm font-bold">
+                <Loader2 className="animate-spin mr-2" /> Loading...
+              </div>
+            ) : currentOrders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 opacity-50">
+                <p className="text-sm font-bold text-slate-400">
+                  No orders found.
+                </p>
               </div>
             ) : (
-              <>
-                {(activeTab === "payment_requests" ||
-                  activeTab === "all_orders") && (
-                  <>
-                    {filteredData.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-96 opacity-50">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                          <Search className="text-slate-400" />
-                        </div>
-                        <p className="text-sm font-bold text-slate-400">
-                          No orders found.
-                        </p>
-                      </div>
-                    ) : (
-                      <table className="w-full text-left border-collapse">
-                        <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-100">
-                          <tr>
-                            <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                              Order Info
-                            </th>
-                            <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest hidden md:table-cell">
-                              Partner
-                            </th>
-                            <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-                              Financials
-                            </th>
-                            <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest hidden lg:table-cell">
-                              Status
-                            </th>
-                            <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest text-right">
-                              Action
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {filteredData.map((order) => {
-                            const statusConfig = getStatusConfig(order.status);
-                            return (
-                              <tr
-                                key={order.id}
-                                className="group hover:bg-slate-50/60 transition-colors cursor-default"
-                              >
-                                <td className="px-8 py-5 align-top">
-                                  <div className="flex items-start gap-4">
-                                    <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
-                                      {order.service?.name?.charAt(0) || "S"}
-                                    </div>
-                                    <div>
-                                      <div className="font-bold text-slate-900 text-sm">
-                                        {order.service?.name}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                                        {order.displayId} • {order.Duration}
-                                      </div>
-                                      <div className="mt-2 md:hidden">
-                                        <span
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
-                                        >
-                                          {statusConfig.label}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-8 py-5 align-top hidden md:table-cell">
-                                  <div className="font-bold text-slate-800 text-sm">
-                                    {order.partnerName}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400 mt-1">
-                                    Submitted: {order.dateFormatted}
-                                  </div>
-                                </td>
-                                <td className="px-8 py-5 align-top">
-                                  <div className="flex flex-col gap-1.5">
-                                    <div className="flex justify-between w-32 text-[10px]">
-                                      <span className="text-slate-400 font-medium">
-                                        Cost:
-                                      </span>
-                                      <span className="font-bold text-slate-900">
-                                        {formatPrice(order.adminPrice)}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between w-32 text-[10px]">
-                                      <span className="text-slate-400 font-medium">
-                                        Due:
-                                      </span>
-                                      <span
-                                        className={`font-bold px-1.5 rounded ${
-                                          order.dueAmount > 0
-                                            ? "bg-red-50 text-red-600"
-                                            : "bg-emerald-50 text-emerald-600"
-                                        }`}
-                                      >
-                                        {formatPrice(order.dueAmount)}
-                                      </span>
-                                    </div>
-                                    {order.paymentStatus ===
-                                      "Verification_Pending" && (
-                                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded w-fit">
-                                        Request: ₹{order.paymentRequestAmount}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-8 py-5 align-top hidden lg:table-cell">
-                                  <div
-                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
-                                  >
-                                    {React.createElement(statusConfig.icon, {
-                                      size: 12,
-                                    })}{" "}
-                                    {statusConfig.label}
-                                  </div>
-                                </td>
-                                <td className="px-8 py-5 align-top text-right">
-                                  <button
-                                    onClick={() => setActionOrder(order)}
-                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-bold shadow-lg shadow-slate-900/10 hover:bg-slate-800 hover:-translate-y-0.5 transition-all"
-                                  >
-                                    Verify / Actions <ArrowRight size={12} />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </>
-                )}
-                {activeTab === "ledger" && (
-                  <div className="p-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {partners
-                      .filter((p) =>
-                        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-                      )
-                      .map((partner) => (
-                        <motion.div
-                          key={partner.id}
-                          onClick={() => setSelectedPartner(partner)}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="cursor-pointer group p-6 rounded-[2rem] border border-slate-100 bg-white hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/5 transition-all relative overflow-hidden"
-                        >
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-blue-50 to-transparent rounded-bl-[4rem] -mr-4 -mt-4 opacity-50 group-hover:opacity-100 transition-opacity" />
-                          <div className="flex justify-between items-start mb-6 relative z-10">
-                            <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-lg shadow-inner">
-                                {partner.name.charAt(0)}
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-slate-900 text-lg leading-tight">
-                                  {partner.name}
-                                </h4>
-                                <p className="text-[10px] text-slate-400 font-medium mt-1 bg-slate-50 px-2 py-0.5 rounded-md w-fit">
-                                  {partner.history.length} Total Orders
-                                </p>
-                              </div>
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      Service
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      Partner
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      Financials
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      Status
+                    </th>
+                    <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest text-right">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {currentOrders.map((order) => {
+                    const statusConfig = getStatusConfig(order.status);
+                    return (
+                      <tr
+                        key={order.id}
+                        className="hover:bg-slate-50/60 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shadow-sm">
+                              {order.service?.name?.charAt(0) || "S"}
                             </div>
-                            <div className="p-2 rounded-full bg-slate-50 text-slate-300 group-hover:bg-blue-500 group-hover:text-white transition-all">
-                              <ArrowUpRight size={16} />
+                            <div>
+                              <div className="font-bold text-slate-900 text-xs">
+                                {order.service?.name}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                {order.displayId}
+                              </div>
                             </div>
                           </div>
-                          <div className="pt-4 border-t border-slate-50 flex justify-between items-end relative z-10">
-                            <div>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                                Total Due
-                              </p>
-                              <p
-                                className={`text-xl font-black ${
-                                  partner.currentDue > 0
-                                    ? "text-rose-600"
-                                    : "text-emerald-500"
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-slate-800 text-xs">
+                            {order.partnerName}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {order.dateFormatted}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex justify-between w-24 text-[10px]">
+                              <span className="text-slate-400">Cost:</span>
+                              <span className="font-bold text-slate-900">
+                                {formatPrice(order.adminPrice)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between w-24 text-[10px]">
+                              <span className="text-slate-400">Due:</span>
+                              <span
+                                className={`font-bold px-1 rounded ${
+                                  order.dueAmount > 0
+                                    ? "bg-red-50 text-red-600"
+                                    : "bg-emerald-50 text-emerald-600"
                                 }`}
                               >
-                                {formatPrice(partner.currentDue)}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                                Paid
-                              </p>
-                              <p className="text-sm font-bold text-emerald-600">
-                                {formatPrice(partner.totalPaid)}
-                              </p>
+                                {formatPrice(order.dueAmount)}
+                              </span>
                             </div>
                           </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                )}
-              </>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
+                          >
+                            {React.createElement(statusConfig.icon, {
+                              size: 10,
+                            })}{" "}
+                            {statusConfig.label}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => setActionOrder(order)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[10px] font-bold shadow-lg shadow-slate-900/10 hover:bg-slate-800 hover:-translate-y-0.5 transition-all"
+                          >
+                            Verify <ArrowRight size={10} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
-        </div>
 
-        {/* MODALS */}
-        <AddStaffModal
-          isOpen={isStaffModalOpen}
-          onClose={() => setIsStaffModalOpen(false)}
-        />
-        <GenerateCouponModal
-          isOpen={isCouponModalOpen}
-          onClose={() => setIsCouponModalOpen(false)}
-        />
-        <PartnerLedgerModal
-          isOpen={!!selectedPartner}
-          onClose={() => setSelectedPartner(null)}
-          partner={selectedPartner}
-        />
-        <PaymentVerificationModal
-          isOpen={!!actionOrder}
-          onClose={() => setActionOrder(null)}
-          order={actionOrder}
-        />
+          <div className="p-4 border-t border-slate-100 bg-slate-50">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        </div>
       </div>
+
+      {/* MODALS */}
+      <AnimatePresence>
+        {isExpensesViewModalOpen && (
+          <ExpensesListModal
+            isOpen={isExpensesViewModalOpen}
+            onClose={() => setIsExpensesViewModalOpen(false)}
+            expenses={expenses}
+          />
+        )}
+        {isPnLModalOpen && (
+          <PnLDetailsModal
+            isOpen={isPnLModalOpen}
+            onClose={() => setIsPnLModalOpen(false)}
+            revenueData={pnlModalData.credit}
+            expenseData={pnlModalData.debit}
+          />
+        )}
+        {isMembersModalOpen && (
+          <MembersListModal
+            isOpen={isMembersModalOpen}
+            onClose={() => setIsMembersModalOpen(false)}
+            partners={partners}
+          />
+        )}
+        {actionOrder && (
+          <PaymentVerificationModal
+            isOpen={!!actionOrder}
+            onClose={() => setActionOrder(null)}
+            order={actionOrder}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

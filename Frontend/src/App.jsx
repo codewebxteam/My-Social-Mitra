@@ -22,10 +22,14 @@ import Profile from "./pages/Profile";
 import UpgradePlan from "./pages/UpgradePlan";
 import UpdatePassword from "./pages/UpdatePassword";
 
-// Admin Dashboard (NEW)
+// Admin Dashboard
 import AdminLayout from "./pages/AdminLayout";
 import AdminDashboard from "./pages/AdminDashboard";
 import StaffPerformance from "./pages/StaffPerformance";
+
+// Staff Portal (NEW)
+import StaffLogin from "./pages/StaffLogin";
+import StaffDashboard from "./pages/StaffDashboard";
 
 const App = () => {
   return (
@@ -98,6 +102,10 @@ const App = () => {
             <Route index element={<AdminDashboard />} />
             <Route path="staff" element={<StaffPerformance />} />
           </Route>
+
+          {/* STAFF PORTAL ROUTES */}
+          <Route path="/staff/login" element={<StaffLogin />} />
+          <Route path="/staff/dashboard" element={<StaffDashboard />} />
         </Routes>
       </Router>
     </ReactLenis>

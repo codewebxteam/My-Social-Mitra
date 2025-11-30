@@ -20,8 +20,8 @@ const footerLinks = {
   Company: [
     { name: "About Us", href: "#" },
     { name: "Contact", href: "/contact" },
-    { name: "Admin Login", href: "/admin" }, 
-    { name: "Staff Login", href: "#" },
+    { name: "Admin Login", href: "/admin" },
+    { name: "Staff Login", href: "/staff/login" },
   ],
   Resources: [
     { name: "Blog", href: "#" },

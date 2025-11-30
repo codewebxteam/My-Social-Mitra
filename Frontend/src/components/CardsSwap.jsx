@@ -22,9 +22,7 @@ const StarterCard = () => (
       <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4 md:mb-6">
         <Zap className="w-5 h-5 md:w-6 md:h-6" />
       </div>
-      <h3 className="text-xl md:text-2xl font-bold text-slate-900">
-        Pro Starter
-      </h3>
+      <h3 className="text-xl md:text-2xl font-bold text-slate-900">Starter</h3>
       <p className="text-slate-500 mt-2 text-xs md:text-sm leading-relaxed font-medium">
         Chapter 1: The Fundamentals.
       </p>
@@ -60,7 +58,7 @@ const StarterCard = () => (
   </div>
 );
 
-const SupremeCard = () => (
+const AcademicCard = () => (
   <div className="w-full h-full bg-gradient-to-br from-[#f7650b] to-[#e05a09] rounded-[1.5rem] md:rounded-[2rem] shadow-2xl shadow-orange-500/40 p-6 md:p-8 flex flex-col justify-between relative overflow-hidden border border-white/20 group">
     {/* --- FIX: Badge moved inside the card with proper spacing --- */}
     <div
@@ -78,7 +76,7 @@ const SupremeCard = () => (
       <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white mb-4 md:mb-6 shadow-inner border border-white/20">
         <Crown className="w-5 h-5 md:w-6 md:h-6" />
       </div>
-      <h3 className="text-xl md:text-2xl font-bold text-white">Supreme</h3>
+      <h3 className="text-xl md:text-2xl font-bold text-white">Academic</h3>
       <p className="text-orange-100 mt-2 text-xs md:text-sm leading-relaxed font-medium">
         The Complete Collection.
       </p>
@@ -117,7 +115,7 @@ const SupremeCard = () => (
   </div>
 );
 
-const PremiumCard = () => (
+const BoosterCard = () => (
   <div className="w-full h-full bg-slate-900 rounded-[1.5rem] md:rounded-[2rem] border border-slate-800 shadow-2xl shadow-slate-900/50 p-6 md:p-8 flex flex-col justify-between relative overflow-hidden group">
     <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500" />
@@ -126,9 +124,7 @@ const PremiumCard = () => (
       <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-white mb-4 md:mb-6 border border-slate-700 shadow-lg">
         <Star className="w-5 h-5 md:w-6 md:h-6 text-purple-400" />
       </div>
-      <h3 className="text-xl md:text-2xl font-bold text-white">
-        Premium Elite
-      </h3>
+      <h3 className="text-xl md:text-2xl font-bold text-white">Booster</h3>
       <p className="text-slate-400 mt-2 text-xs md:text-sm leading-relaxed font-medium">
         Advanced Strategies.
       </p>
@@ -479,10 +475,10 @@ const CardsSwap = () => {
                   <StarterCard />
                 </Card>
                 <Card>
-                  <PremiumCard />
+                  <BoosterCard />
                 </Card>
                 <Card>
-                  <SupremeCard />
+                  <AcademicCard />
                 </Card>
               </SwapEngine>
             </div>

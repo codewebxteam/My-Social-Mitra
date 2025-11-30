@@ -100,9 +100,9 @@ const INDIAN_STATES = [
 ];
 
 const PLANS = [
-  { id: "starter", name: "Pro Starter" },
-  { id: "elite", name: "Premium Elite" },
-  { id: "supreme", name: "Supreme Master" },
+  { id: "starter", name: "Starter" },
+  { id: "booster", name: "Booster" },
+  { id: "academic", name: "Academic" },
 ];
 
 const AuthModal = ({ isOpen, onClose }) => {
